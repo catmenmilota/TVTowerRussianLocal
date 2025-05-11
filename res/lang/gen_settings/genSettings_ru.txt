@@ -1,0 +1,202 @@
+LANGUAGE_NAME_INTERNATIONAL = Russian
+LANGUAGE_NAME_LOCALE        = Русский
+
+MENU      = Меню / Пауза
+OPEN_MENU = Открыть меню
+
+CHAT           = Чат
+SAVE_AND_APPLY = Сохранить и применить
+CANCEL         = Отменить
+
+CONTINUE_GAME                              = Продолжить игру
+LOAD_GAME                                  = Загрузить игру
+INCOMPATIBLE_SAVEGAME                      = Несовместимое сохранение
+INVALID_SAVEGAME                           = Испорченное сохранение
+FILE_NOT_FOUND                             = Файл не найден
+SAVEGAME_GETS_LOADED                       = Загружаем сохранение...
+SAVE_GAME                                  = Сохранить игру
+NAME_OF_SAVEGAME                           = Имя сохранения
+OVERWRITE_SAVEGAME                         = Переписать сохранение?
+DO_YOU_REALLY_WANT_TO_OVERWRITE_SAVEGAME_X = Вы уверены что хотите переписать сохранение %SAVEGAME%?
+SAVEGAME_GETS_CREATED                      = Создаём сохранение...
+PLEASE_BE_PATIENT                          = Пожалуйста, ожидайте
+EXIT_GAME                                  = Выйти из игры
+EXIT_TO_MAINMENU                           = Выйти в главное меню
+
+24_HOURS_GAMEDAY                                              = 24 часовой игровой день
+ALLOW_TRAILERS_AND_INFOMERCIALS                               = Разрешить трейлеры / рекламные ролики
+ALLOW_MOVIES_WITH_YEAR_OF_PRODUCTION_GT_GAMEYEAR              = Разрешать фильмы, выпущенные |b|позже|/b| текущего игрового года
+START_GAME_WITH_CREDIT                                        = Начать с займом
+START_GAME_RANDOMIZE_PROGRAMME                                = Немного изменить атрибуты фильма при запуске
+OPTION_ON                                                     = Опция включена
+OPTION_OFF                                                    = Опция выключена
+AVAILABLE_GAMES                                               = Доступные игры
+ALREADY_OVER                                                  = Уже закончили?
+DO_YOU_REALLY_WANT_TO_QUIT                                    = Вы действительно хотите выйти?
+DO_YOU_REALLY_WANT_TO_QUIT_THE_GAME_AND_RETURN_TO_STARTSCREEN = Вы действительно хотите выйти в главное меню?
+
+PREPARING_START_DATA           = Подготавливаем начальные данные
+SYNCHRONIZING_START_CONDITIONS = Синхронизируем стартовые условия
+STARTING_MULTIPLAYERGAME       = Начинаем мультиплеерную игру
+STARTING_SINGLEPLAYERGAME      = Начинаем однопользовательскую игру
+
+PLAYERNAME                  = Имя игрока
+CHANNELNAME                 = Имя канала
+STATIONMAP                  = Карта антенн
+DATABASE                    = Датабаза
+SOUND_OUTPUT                = Звуковой выход
+GRAPHICS                    = Графика
+MUSIC                       = Музыка
+SFX                         = Звуковые эффекты
+FULLSCREEN                  = Полный экран
+VSYNC                       = VSync
+RIGHTCLICK_EMULATION              = Симулировать ПКМ
+RIGHTCLICK_EMULATION_EXPLANATION  = Симулировать ПКМ с помощью долгого нажатия ЛКМ или нажатия
+RIGHTCLICK_EMULATION_TIME         = Время до нажатия ПКМ
+WINDOW_MODE_RESOLUTION      = Оконное разрешения
+INPUT                       = Ввод
+USE_TOUCH_INPUT             = Использовать сенсорное управление
+USE_TOUCH_INPUT_EXPLANATION = Первое нажатие установит курсор, а последующие симулируют ЛКМ. Курсор переместиться, если расстояние между позициями касания слишком велико.
+MOVE_INSTEAD_CLICK_RADIUS   = Радиус для перемещения вместо нажатия
+MULTIPLAYER                 = Мультиплеер
+SINGLEPLAYER                = Одиночная игра
+DEFAULTS_FOR_NEW_GAME       = Стандартно для следующих игр
+RENDERER                    = Рендер
+SOUND_ENGINE                = Звуковой движок
+SOUND_MUSIC_VOLUME          = Громкость музыки
+SOUND_SFX_VOLUME            = Громкость эффектов
+SOUND_MUTED                 = Беззвучный
+PORT_ONLINEGAME             = Порт для сетевых игр
+GAME_SPEED_IN_ROOMS         = Игровая скорость в комнатах
+AUTOSAVE_INTERVAL           = Автосохранение каждые
+
+GAME_TITLE  = Название игры
+START_YEAR  = Начальный год
+DAY_OF_YEAR = День в году
+
+YES        = Да
+NO         = Нет
+OK         = Ладно
+MONEY      = Деньги
+DEBT       = Долг
+REACH      = Досчить
+PRICE      = Цена
+VALUE      = Ценность
+POPULATION = Население
+NAME       = Имя
+
+GENDER_MEN         = Мужчины
+GENDER_WOMEN       = Женщины
+GENDER_ALL         = Все
+GENDER_MEN_SHORT   = М
+GENDER_WOMEN_SHORT = Ж
+
+CURRENCY     = €
+OCLOCK       =
+DAY_SHORT    = Д
+HOUR_SHORT   = Ч
+MINUTE_SHORT = М
+DAY          = день
+DAYS         = дни
+DATE         = дата
+HOUR         = час
+HOURS        = часы
+MINUTE       = минута
+MINUTES      = минуты
+OLD          = Старый
+TOMORROW     = Завтра
+TODAY        = Сегодня
+YESTERDAY    = Вчера
+TWO_DAYS_AGO = Два дня назад
+IN_X_DAYS    = Через %DAYS% дней
+X_DAYS_AGO   = %DAYS% дней назад
+
+WEEK_SHORT_MONDAY    = Пн
+WEEK_SHORT_TUESDAY   = Вт
+WEEK_SHORT_WEDNESDAY = Ср
+WEEK_SHORT_THURSDAY  = Чт
+WEEK_SHORT_FRIDAY    = Пт
+WEEK_SHORT_SATURDAY  = Сб
+WEEK_SHORT_SUNDAY    = Вс
+WEEK_LONG_MONDAY     = Понедельник
+WEEK_LONG_TUESDAY    = Вторник
+WEEK_LONG_WEDNESDAY  = Среда
+WEEK_LONG_THURSDAY   = Четверг
+WEEK_LONG_FRIDAY     = Пятница
+WEEK_LONG_SATURDAY   = Суббота
+WEEK_LONG_SUNDAY     = Воскресенье
+SEASON_SPRING        = весна
+SEASON_SUMMER        = лето
+SEASON_AUTUMN        = осень
+SEASON_WINTER        = зима
+
+
+MENU_SOLO_GAME       = Одиночная игра
+MENU_START_GAME      = Начать игру
+MENU_NETWORKGAME     = Игра по LAN
+MENU_ONLINEGAME      = Онлайн игра
+MENU_JOIN            = Войти
+MENU_CREATE_GAME     = Создать игру
+MENU_BACK            = Назад
+MENU_SETTINGS        = Настройки
+MENU_QUIT            = Выйти
+MENU_AVAILABLE_GAMES = Доступные игры
+
+ABBREVIATION_THOUSAND = тыс.
+ABBREVIATION_MILLION  = млн.
+ABBREVIATION_BILLION  = млрд.
+
+DIFFICULTY_EASY   = Просто
+DIFFICULTY_NORMAL = Нормально
+DIFFICULTY_HARD   = Сложно
+DIFFICULTY_CUSTOM = Настроить
+
+GAMETIME  = Время
+PLAYER    = Игрок
+GAME      = Игра
+GAME_TIME = Название игры
+GAMEDAY   = Игровой день
+
+
+GAMESPEED      = Игровая скорость
+SET_SPEED_TO_X = Установить игровую скорость на %SPEED%
+
+MANUAL    = Мануал
+HELP      = Помощь / Меню
+SHOW_HELP = Показать помощь
+
+DO_NOT_SHOW_AGAIN        = Не показывать опять
+DO_NOT_SHOW_ANY_TIPS     = Не показывать любую помощь
+SHOW_INTRODUCTORY_GUIDES = Показать приветственную помощь
+
+ERROR_NOT_POSSIBLE                  = Невозможно!
+ERROR_NOT_ABLE_TO_SELL_LAST_STATION = Невозможно продать последнюю антенну.
+ERROR_NOT_ENOUGH_MONEY              = Недостаточно денег!
+ERROR_NOT_ENOUGH_MONEY_TEXT         = У вас недостаточно средств, что бы купить это
+
+NEWGAMESETTINGS_RANDOMIZE          = Случайно
+NEWGAMESETTINGS_RANDOMIZE_DETAIL   Выбрать цвет и фигуру тела случайно
+NEWGAMESETTINGS_CHANNELNAME_DETAIL = Имя телеканала этого игрока
+NEWGAMESETTINGS_PLAYERNAME_DETAIL  = Имя этого игрока
+NEWGAMESETTINGS_DIFFICULTY         = Сложность
+NEWGAMESETTINGS_DIFFICULTY_DETAIL  = Сложность для этого игрока
+NEWGAMESETTINGS_START_YEAR_DETAIL  = Год, в котором начнется игра. Влияет на доступные программы!
+NEWGAMESETTINGS_GAME_SEED          = Игровое число / семя
+NEWGAMESETTINGS_GAME_SEED_DETAIL   = Одинаковые игровые номера приводят к одинаковым стартовым условиям (предложения от поставщиков).
+
+MESSAGE_CLOSES_AT_TIME = Сообщение закроется через %TIME%
+MESSAGE_CLOSES_AT_DAY  = Сообщение закроется через %TIME%
+
+
+HINT_PRESSING_ALT_WILL_SHOW_DETAILS    = Зажатие ALT покажет детали.
+HINT_PRESSING_ALT_WILL_FIX_TOOLTIP     = Зажатие ALT заблокирует подсказку.
+HINT_PRESSING_ALT_WILL_RELEASE_TOOLTIP = Зажатие ALT покажет подсказку.
+HINT_PROGRAMMEPLANER_SHORTCUTS         = ALT: переключит дату | CTRL + Нажатие: скопирует программу | SHIFT + Нажатие: следующий эпизод
+HINT                                   = Подсказа
+
+STARTHINT_TITLE1 = План программы
+STARTHINT_TEXT1  = CTRL позволяет вам разместить одну программу несколько раз, а SHIFT разместит следующий эпизод.
+STARTHINT_TITLE2 = План программы
+STARTHINT_TEXT2  = Успех трансляции в значительной степени зависит от качества/рейтинга программы. Не менее важными являются время трансляции, популярность жанра, количество зрителей, посещающих (надеюсь, похожие) следующие программы, количество показанных трейлеров, качество выпуска новостей и другие факторы.\n\nПрограммы некоторых жанров, например комедии, также могут транслироваться чаще, чем другие.
+STARTHINT_TITLE3 = Контракты на рекламу
+STARTHINT_TEXT3  = В рекламных контрактах определены такие требования, как минимальная аудитория. Это, а также, конечно, прибыль/штрафы напрямую зависят от максимальной аудитории, которую канал может охватить в данный момент.\n\nПоэтому иногда лучше подписывать новые контракты непосредственно перед покупкой новых станций.
