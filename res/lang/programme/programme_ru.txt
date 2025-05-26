@@ -1,0 +1,152 @@
+PLANNER_UNKNOWN      = Скоро
+PLANNER_PROGRAMME    = Программы
+PLANNER_ADS          = Реклама
+PLANNER_FINANCES     = Финансы
+PLANNER_STATISTICS   = Статистика
+PLANNER_MESSAGES     = Сообщения
+PLANNER_ACHIEVEMENTS = Достижения
+
+PRIMETIME     = Прайм-тайм
+NIGHTTIME     = Позднее время
+LOW_AUDIENCE  = Низкая аудитория
+HIGH_AUDIENCE = Высокая аудитория
+
+
+MOVIE_SPEED       = Экшен
+MOVIE_CRITIC      = Критики
+MOVIE_BOXOFFICE   = Кассовые сборы
+MOVIE_TVAUDIENCE  = Аудитория на ТВ
+MOVIE_TOPICALITY  = Актуальность
+MOVIE_BLOCKS      = блок(а)
+MOVIE_XRATED      = отмечено как 18+
+MOVIE_EPISODES    = эпизоды
+MOVIE_CAST        = Каст
+MOVIE_REPITITIONS = Повторения
+
+MOVIE_LIVESHOW   = Живая программа
+MOVIE_CALLINSHOW = Вы получите %PROFIT% за 1,000 зрителей.
+MOVIE_TRAILER    = Трансляция трейлера может повысить интерес к предстоящим трансляциям продвигаемой программы.
+
+MOVIES          = Фильм
+SERIES          = Сериал
+SERIES_SINGULAR = Сериал
+SPECIAL_BIN     = Корзина со скидками
+AUCTION         = Аукцион
+TRAILER         = Трейлер
+X_RATED         = 18+
+
+MOVIES_AND_SERIES_AUCTION                = Аукцион фильмов и сериалов
+CLICK_ON_MOVIE_OR_SERIES_TO_PLACE_BID    = Нажмите на фильм или сериал, чтобы сделать ставку.
+AUCTION_MAKE_BID                         = Ставка
+AUCTION_WITHOUT_BID                      = Нет ставок
+YOU_HAVE_BEEN_OUTBID                     = Ваша ставка была перебита
+SOMEONE_BID_MORE_THAN_YOU_FOR_X          = Кто-то предложил больше чем вы за |b|%TITLE%|/b|.
+YOUR_PREVIOUS_BID_OF_X_WAS_REFUNDED      = Ваша предыдущая ставка на %MONEY% была возвращена.
+YOU_HAVE_WON_AN_AUCTION                  = Вы не выиграли аукцион
+
+PROGRAMME_GENRE_UNDEFINED                  = Различный
+PROGRAMME_GENRE_ADVENTURE                  = Приключение
+PROGRAMME_GENRE_ACTION                     = Экшен
+PROGRAMME_GENRE_ANIMATION                  = Анимация
+PROGRAMME_GENRE_CRIME                      = Криминал
+PROGRAMME_GENRE_COMEDY                     = Комедия
+PROGRAMME_GENRE_DOCUMENTARY                = Документалка
+PROGRAMME_GENRE_DRAMA                      = Драма
+PROGRAMME_GENRE_EROTIC                     = Эротика
+PROGRAMME_GENRE_FAMILY                     = Семейное
+PROGRAMME_GENRE_FANTASY                    = Фантастика
+PROGRAMME_GENRE_HISTORY                    = Историческое
+PROGRAMME_GENRE_HORROR                     = Хоррор
+PROGRAMME_GENRE_MONUMENTAL                 = Эпик
+PROGRAMME_GENRE_MYSTERY                    = Таинственный
+PROGRAMME_GENRE_ROMANCE                    = Романтика
+PROGRAMME_GENRE_SCIFI                      = Сай-фай
+PROGRAMME_GENRE_THRILLER                   = Триллер
+PROGRAMME_GENRE_WESTERN                    = Вестерн
+PROGRAMME_GENRE_DOCUMENTARIES_AND_FEATURES = Документальные фильмы и новинки
+PROGRAMME_GENRE_SHOW_AND_EVENTS            = Шоу и мероприятия
+PROGRAMME_GENRE_SHOW                       = Шоу
+PROGRAMME_GENRE_SHOW_MUSIC                 = Музыкальное шоу
+PROGRAMME_GENRE_SHOW_POLITICS              = Политическое ток-шоу
+PROGRAMME_GENRE_SHOW_GAME                  =  Игровое шоу
+PROGRAMME_GENRE_SHOW_TALK                  = Ток-шоу
+PROGRAMME_GENRE_EVENT                      = Событие
+PROGRAMME_GENRE_EVENT_POLITICS             = Политика
+PROGRAMME_GENRE_EVENT_SPORT                = Спорт
+PROGRAMME_GENRE_EVENT_SHOWBIZ              = Шоу-бизнес
+PROGRAMME_GENRE_EVENT_MUSIC                = Музыка и пение
+PROGRAMME_GENRE_FEATURE                    = Особенность
+PROGRAMME_GENRE_FEATURE_YELLOWPRESS        = Слухи
+
+PROGRAMME_FLAG_LIVE      = Прямой эфир
+PROGRAMME_FLAG_ANIMATION = Анимация
+PROGRAMME_FLAG_CULTURE   = Культура
+PROGRAMME_FLAG_CULT      = Культовый
+PROGRAMME_FLAG_TRASH     = Мусор
+PROGRAMME_FLAG_BMOVIE    = Категория B
+PROGRAMME_FLAG_XRATED    = 18+
+PROGRAMME_FLAG_PAID      = Рекламный ролик/Звонок по телефону
+PROGRAMME_FLAG_SERIES    = Сериал
+PROGRAMME_FLAG_SCRIPTED  = Постановочный
+
+PROGRAMMELICENCES          = Права на программу
+SELECT_LICENCES_FOR_SALE   = Выбрать права на продажу
+LICENCETYPE_COLLECTION     = Коллекция
+LICENCETYPE_SINGLE         = Одиночный
+LICENCETYPE_EPISODE        = Эпизод
+LICENCETYPE_SERIES         = Сериал
+LICENCETYPE_FRANCHISE      = Франшиза
+SERIES_WITH_X_EPISODES     = Сериал с %EPISODESCOUNT% эпизодами.
+COLLECTION_WITH_X_ELEMENTS = Коллекция с %X% записями 
+
+PROGRAMME_PRODUCT_UNDEFINED   = Не определено
+PROGRAMME_PRODUCT_MOVIE       = Фильм
+PROGRAMME_PRODUCT_SERIES      = Сериал
+PROGRAMME_PRODUCT_SHOW        = Шоу
+PROGRAMME_PRODUCT_FEATURE     = Особенное
+PROGRAMME_PRODUCT_INFOMERCIAL = Реклама
+PROGRAMME_PRODUCT_EVENT       = Событие
+PROGRAMME_PRODUCT_MISC        = Проч.
+
+PROGRAMME_IN_PROGRAMME_PLAN              = Программа в плане по программам!
+TRAILER_IN_PROGRAMME_PLAN                = Трейлер в плане программы!
+PROGRAMME_AND_TRAILER_IN_PROGRAMME_PLAN  = Программа и трейлер в плане программы!
+ONLY_1_BROADCAST_POSSIBLE                = Возможна только 1 трансляция!
+ONLY_X_BROADCASTS_POSSIBLE               = Возможна только %X% трансляций!
+NO_MORE_BROADCASTS_ALLOWED               = Трансляции больше невозможны!
+BROADCAST_TIME_RESTRICTED                = Время трансляции ограничено!
+BROADCAST_ONLY_ALLOWED_FROM_X_TO_Y       = Трансляция разрешена с %X%:00 до %Y%:00!
+FIRST_BROADCAST_ONLY_ALLOWED_FROM_X_TO_Y = Первая трансляция разрешена с %X%:00 до %Y%:00!
+LIVE_PRODUCTION_FINISH_WILL_COST_X       = Окончание производства в реальном времени обойдется в %X%
+
+OPENINGSHOW_TITLE       = Большой запуск "%CHANNELNAME%"
+OPENINGSHOW_DESCRIPTION = Давайте откроем пробки! %CHANNELNAME% выходит в эфир.
+
+SPORT_PROGRAMME_TITLE                                = ${.self:"sport":"name"}: ${.self:"sportleague":"name"} ${.worldtime:"year":${.self:"sportleague":"getfirstmatchtime"}}
+SPORT_PROGRAMME_ALL_X_MATCHES_OF_LEAGUEX_IN_SEASON_X = Все${.self:"sportleague":"matchcount"} матчи ${.self:"sportleague":"name"} в сезоне ${.worldtime:"year":${.self:"sportleague":"getfirstmatchtime"}}.
+SPORT_PROGRAMME_MATCH_TIMES                          = Время матча
+SPORT_PROGRAMME_MATCH_DESCRIPTION1                   = Матч между командами,  ${.self:"sportteam":0:"leaguerank"} и ${.self:"sportteam":1:"leaguerank"} в лиге. ${.self:"sportteam":0:"teaminitials"} тренер ${.self:"sportteam":0:"trainer":"lastname"} верит в успех.
+SPORT_PROGRAMME_MATCH_DESCRIPTION2                   = Звезда ${.self:"sportteam":0:"teaminitials"}, ${.self:"sportteam":0:"member":"forward":"lastname"}, против наивысшего балла ${.self:"sportteam":1:"member":"forward":"fullname"} команды.
+SPORT_PROGRAMME_MATCH_DESCRIPTION3                   = Интересная игра предстоит, когда ${.self:"sportteam":0:"teamnamewitharticle"} встретит игроков ${.self:"sportteam":1:"teaminitials"}.
+SPORT_PROGRAMME_MATCH_DESCRIPTION4                   = ${.ucfirst:"${.self:"sportteam":1:"teamnamewitharticle"}"} посещяет${.self:"sportteam":0:"teaminitials"} в ${.self:"sportteam":0:"city"}.
+SPORT_PROGRAMME_MATCH_DESCRIPTION5                   = ${.self:"sportteam":1:"trainer":"fullname"} и его команда путешествует в ${.self:"sportteam":0:"city"}, ${.self:"sportteam":0:"leaguerank"} в лиге.
+
+SPORT_PROGRAMME_PLAYOFF_MATCH    = Матч плей-офф
+SPORT_PROGRAMME_MATCH_OF_LEAGUEX = Матч, проходящий в ${.self:"sportleague":"name"}.
+SPORT_PLAYOFFS_LONG              = "Плей-офф"
+SPORT_PLAYOFFS_SHORT             = "П-О"
+
+SPORT_AFTER_PENALTY_SHORT  = "Пенальти"
+SPORT_AFTER_OVERTIME_SHORT = "Доп. время"
+
+LIVE_ON_TAPE                        = Живая запись
+ALL_MATCHES_FINISHED                = Все матчи завершены
+X_OF_Y_LIVE_MATCHES_ALREADY_STARTED = %X%/%Y% прямые трансляции матчей уже начались.
+
+PENALTY_OF_X_WAS_PAID                                      = Штраф в %MONEY% был уплачен.
+BROADCAST_OF_XRATED_PROGRAMME_X_NOT_ALLOWED_DURING_DAYTIME = Трансляция программы с рейтингом 18+ |b|%TITLE%|/b| в дневное время запрещена.
+AUTHORITIES_STOPPED_BROADCAST                              = Власти прекратили вещание
+AUTHORITIES_CONFISCATED_LICENCE                            = Власти конфисковали права на программу
+PROGRAMMELICENCE_X_GOT_CONFISCATED                         = Права на программу |b|%TITLE%|/b| были конфискованы.
+SEEMS_AUTHORITIES_VISITED_THE_WRONG_ROOM                   = Похоже, представители власти посетили не ту комнату.
+BETTER_WATCH_OUT_NEXT_TIME                                 = В следующий раз лучше быть поосторожнее.
