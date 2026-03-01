@@ -47,6 +47,7 @@ function TaskScripts:Activate()
 		self.TargetRoom = TVT.ROOM_SCRIPTAGENCY
 	elseif self.prodStatus == PROD_STATUS_GET_CONCEPTS then
 		self.TargetRoom = self:GetStudioId()
+		self.FixedRoom = self.TargeRoom
 	elseif self.prodStatus == PROD_STATUS_SUPERMARKET then
 		self.TargetRoom = TVT.ROOM_SUPERMARKET
 	elseif self.prodStatus == PROD_STATUS_START_PRODUCTION then
@@ -57,19 +58,25 @@ function TaskScripts:Activate()
 end
 
 function TaskScripts:GetStudioId()
-	if self.neededStudioSize ~= nil then
-		local studios = TVT.GetRoomsByDetails("studio", TVT.ME)
-		for k,v in pairs(studios) do
-			--self:LogInfo(v.id .." ".. v.GetSize().." "..self.neededStudioSize)
-			if v.GetSize() >= self.neededStudioSize then
-				return v.id
-			end
+	if self.FixedRoom ~= nil then return self.FixedRoom end
+	local studios = TVT.GetRoomsByDetails("studio", TVT.ME)
+	local rndStudio = nil
+	for k,v in pairs(studios) do
+		--self:LogInfo(v.id .." ".. v.GetSize().." "..self.neededStudioSize)
+		if v.IsBlocked() > 0 then
+			--skip occupied studio
+		elseif self.neededStudioSize ~= nil and self.neededStudioSize > 0 and v.GetSize() == self.neededStudioSize then
+			return v.id
+		elseif rndStudio == nil or math.random(0,10) > 6 then
+			rndStudio = v.id
 		end
 	end
+	if rndStudio ~=nil then return rndStudio end
 	return TVT.GetFirstRoomByDetails("studio", TVT.ME).id
 end
 
 function TaskScripts:GetNextJobInTargetRoom()
+	getPlayer().onOwnFloor = false
 	--depending on state: buy script/bring to studio and get list/supermarket/start production
 	if (self.prodStatus == PROD_STATUS_BUY and self.JobBuyScript.Status ~= JOB_STATUS_DONE) then
 		return self.JobBuyScript
@@ -87,9 +94,10 @@ function TaskScripts:GetNextJobInTargetRoom()
 end
 
 function TaskScripts:getStrategicPriority()
-	if getPlayer().hour > 18 then
+	local player = getPlayer()
+	if player.hour > 18 then
 		return 0.0
-	elseif getPlayer().currentAwardType == TVT.Constants.AwardType.CUSTOMPRODUCTION or getPlayer().nextAwardType == TVT.Constants.AwardType.CULTURE then
+	elseif player.currentAwardType == TVT.Constants.AwardType.CUSTOMPRODUCTION or player.nextAwardType == TVT.Constants.AwardType.CULTURE then
 		if self.producedForSammy == false then
 			self.SituationPriority = SAMMY_SIT_PRIORITY
 			if self.awardType == "culture" and self.prodStatus == PROD_STATUS_BUY then
@@ -123,7 +131,17 @@ function JobBuyScript:Prepare(pParams)
 	self.maxJobCount = 4
 	if blocks > 64 then
 		self.maxJobCount = 6
-		self.Task.BasePriority = 0.15
+		if player.coverage > 0.75 then
+			--TODO further optimize max job count
+			self.maxJobCount = 8
+			if player.coverage > 0.9 and player.money > 5000000 then
+				self.Task.BasePriority = 2.5
+			else
+				self.Task.BasePriority = 1
+			end
+		else
+			self.Task.BasePriority = 0.15
+		end
 		self.scriptMaxPrice = 1300000
 		self.minPotential = 0.3
 		self.minAttractivity = 0.65
@@ -143,6 +161,7 @@ function JobBuyScript:Prepare(pParams)
 		self.minPotential = self.minPotential - 0.1
 		self.minAttractivity = self.minAttractivity - 0.1
 	end
+	if self.Task.minAttractivityMulti == nil then self.Task.minAttractivityMulti = self.minAttractivity + 0.05 end
 	self.scriptMaxPrice =  math.min(self.scriptMaxPrice, player.money)
 	self:LogDebug("  maxPrice  ".. self.scriptMaxPrice .. " minPotential "..self.minPotential)
 end
@@ -169,18 +188,24 @@ function JobBuyScript:Tick()
 		table.sort(scCopy, sortByAttractivity)
 
 		for k,script in pairs(scCopy) do
+			--self:LogInfo("  considering script ".. script:getTitle().." attractivity ".. self:getAttractivity(script))
 			if self:canBuy(script) == true then
 				self:LogInfo("  buying script ".. script:getTitle().." attractivity ".. self:getAttractivity(script))
 				TVT:da_buyScript(script)
 				--less idling for remaining jobs
 				self.Task.PriorityBackup = self.Task.BasePriority
-				self.Task.BasePriority = self.Task.BasePriority * 5
-				self.Task.prodStatus = PROD_STATUS_GET_CONCEPTS
+				self.Task.BasePriority = math.max(self.Task.BasePriority * 5, 5)
+--				self.Task.prodStatus = PROD_STATUS_GET_CONCEPTS
 				self.Task.neededStudioSize = script.requiredStudioSize
+				if script:GetProductionLimit() > 1 then
+					self.Task.minAttractivityMulti = self:getAttractivity(script) + 0.05
+				end 
 				break
 			end
 		end
 	end
+	--always try to get concepts - a multi-production may be present in the studio
+	self.Task.prodStatus = PROD_STATUS_GET_CONCEPTS
 	self.Task:SetDone()
 	self.Status = JOB_STATUS_DONE
 end
@@ -192,13 +217,18 @@ function JobBuyScript:getAttractivity(script)
 	if potential < self.minPotential then
 		return -1
 	else
-		return 0.4 * (script:GetSpeed() + script:GetReview()) + 0.2 * potential
+		local attractivity = 0.4 * (script:GetSpeed() + script:GetReview()) + 0.2 * potential
+		local genre = script:GetMainGenre()
+		if genre == TVT.Constants.ProgrammeGenre.Horror then attractivity = attractivity * 0.75 end
+		--if script:IsAlwaysLive() > 0 then attractivity = attractivity * 1.25 end
+		return attractivity
 	end
 end
 
 function JobBuyScript:canBuy(script)
 	local cultureOverride = 0
-	local studioSize = getPlayer().maxStudioSize
+	local player=getPlayer()
+	local studioSize = player.maxStudioSize
 	if self.Task.awardType == "culture" then
 		if script:IsCulture() > 0 then
 			cultureOverride = 1
@@ -212,11 +242,13 @@ function JobBuyScript:canBuy(script)
 		return false
 	elseif script:GetPrice() > self.scriptMaxPrice then
 		return false
-	elseif script:IsLive() == 1 then
+	elseif script:IsLive() > 0 and script:IsAlwaysLive() == 0 then
 		return false
 	elseif TVT:da_getJobCount(script) > self.maxJobCount and cultureOverride == 0 then
 		return false
-	elseif script:GetProductionLimit() > 1 then
+	elseif script:HasBroadcastTimeSlot() > 0 then
+		return false
+	elseif script:GetProductionLimit() > 1 and player.coverage < 0.15 then
 		return false
 	elseif script:IsSeries() == 1 then
 		--TODO buy series only if enough money and not too much credit!!
@@ -229,11 +261,15 @@ function JobBuyScript:canBuy(script)
 			return false
 		end
 	end
+	local attractivity = self:getAttractivity(script)
 
 	--less hard restrictions
-	if self:getAttractivity(script) < self.minAttractivity then
+	if attractivity < self.minAttractivity then
 		return false
 	end
+	if script:GetProductionLimit() > 1 and self.Task.minAttractivityMulti ~= nil and attractivity < self.Task.minAttractivityMulti then
+		return false
+	end 
 
 	return true
 end
@@ -260,8 +296,10 @@ function JobGetConcepts:Tick()
 	elseif response == TVT.RESULT_NOTFOUND then
 		--indicator that no script was in the studio - buy new one
 		self.Task.prodStatus = PROD_STATUS_BUY
+		self.Task.FixedRoom = nil
 	else
 		self:LogInfo("problem dropping script in studio")
+		self.Task.FixedRoom = nil
 	end
 	self.Task:SetDone()
 	self.Status = JOB_STATUS_DONE
@@ -300,13 +338,13 @@ function JobPlanProduction:Prepare(pParams)
 		else
 			self.MaxBudget = 600000
 		end
-	elseif player.coverage < 0.5 then
+	elseif player.coverage > 0.2 and player.coverage < 0.5 then
 		if money > 3000000 then
 			self.MaxBudget = 1500000
 		else
 			self.MaxBudget = 1000000
 		end
-	else
+	elseif player.coverage > 0.5 then
 		if money > 7000000 then
 			self.MaxBudget = 3000000
 		else
@@ -319,10 +357,10 @@ end
 function JobPlanProduction:Tick()
 	if self.MaxBudget > 0 then
 		local response = TVT:sm_PlanProduction(self.MaxBudget, 0.7)
-		if response == TVT.RESULT_OK then
+		if response == TVT.RESULT_OK or response == TVT.RESULT_NOTFOUND then
 			self.Task.prodStatus = PROD_STATUS_START_PRODUCTION
 		else
-			self:LogInfo("problem planning production")
+			self:LogInfo("problem planning production; budget "..self.MaxBudget)
 		end
 	else
 		self:LogInfo(" no budget for planning production")
@@ -351,6 +389,8 @@ function JobStartProduction:Tick()
 	if response == TVT.RESULT_OK then
 		--restore original priority after production start
 		self.Task.BasePriority = self.Task.PriorityBackup
+		self.Task.FixedRoom = nil
+		self.Task.TargetRoom = TVT.ROOM_SCRIPTAGENCY
 		self:LogInfo("Start production")
 	else
 		self:LogInfo("problem starting production")
@@ -358,7 +398,8 @@ function JobStartProduction:Tick()
 	self.SituationPriority = 0
 	self.producedForSammy = true
 	--check state
-	self.Task.prodStatus = PROD_STATUS_GET_CONCEPTS
+	self.Task.prodStatus = PROD_STATUS_BUY
+	self.Task.neededStudioSize = 0
 	self.Task:SetDone()
 	self.Status = JOB_STATUS_DONE
 end

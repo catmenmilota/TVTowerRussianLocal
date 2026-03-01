@@ -789,7 +789,7 @@ Function SEFN_script:SToken(params:STokenGroup Var, context:SScriptExpressionCon
 			Local actors:TPersonProductionJob[] = script.GetJobs()
 			If roleIndex >= actors.length Then Return New SToken( TK_ERROR, "(not enough actors for role #" + roleIndex+".)", params.GetToken(0) )
 
-			Local role:TProgrammeRole = TScript._EnsureRole(actors[roleIndex])
+			Local role:TProgrammeRole = TScript._EnsureRole(actors[roleIndex], script)
 			role = _getLocalizedRole(role, context.contextNumeric)
 
 			Local subCommand:String = params.GetToken(3 + tokenOffset).GetValueText()
@@ -1278,7 +1278,7 @@ Type TGameScriptExpression extends TGameScriptExpressionBase
 			local resultNew:TStringBuilder = GameScriptExpression.ParseNestedExpressionText(result, context)
 
 			'avoid string creation and compare hashes first
-			If result.hash() <> resultNew.hash()
+			If result.hashCode() <> resultNew.hashCode()
 				result = resultNew.ToString()
 				'store the newly parsed expression result
 				lsResult.Set(result, localeID)

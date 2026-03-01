@@ -885,6 +885,8 @@ Type TAdContract Extends TBroadcastMaterialSource {_exposeToLua="selected"}
 		If spotsSent = value Then Return False
 
 		spotsSent = value
+		'invalidate penalty cache
+		penalty = -1
 		'emit an event so eg. ContractList-caches can get recreated
 		TriggerBaseEvent(GameEventKeys.AdContract_OnSetSpotsSent, Null, Self)
 
@@ -1188,10 +1190,8 @@ Type TAdContract Extends TBroadcastMaterialSource {_exposeToLua="selected"}
 		If Not invalidateCache
 			If owner > 0 And owner = playerID And penalty >= 0 Then Return penalty
 		EndIf
-
-		Local result:Int = CalculatePricesForPlayer(base.penaltyBase, playerID, PRICETYPE_PENALTY) * GetSpotCount()
-
-		Return result
+		penalty = CalculatePricesForPlayer(base.penaltyBase, playerID, PRICETYPE_PENALTY) * GetSpotsToSend()
+		Return penalty
 	End Method
 
 
@@ -1733,13 +1733,13 @@ Type TAdContract Extends TBroadcastMaterialSource {_exposeToLua="selected"}
 
 			skin.fontBold.DrawSimple("Infomercial: "+GetTitle(), contentX + 5, contentY)
 			contentY :+ lineHeight + 6
-			skin.fontNormal.DrawSimple("Per Viewer Revenue: "+Int(1000*GetPerViewerRevenueForPlayer(forPlayerID)) +" Eur  ("+MathHelper.NumberToString(GetPerViewerRevenueForPlayer(forPlayerID),4)+" Eur/person)", contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Per Viewer Revenue: "+Int(1000*GetPerViewerRevenueForPlayer(forPlayerID)) +" Eur  ("+TFunctions.LocalizedNumberToString(GetPerViewerRevenueForPlayer(forPlayerID),4)+" Eur/person)", contentX + 5, contentY)
 			contentY :+ lineHeight
-			skin.fontNormal.DrawSimple("Topicality: "+MathHelper.NumberToString(base.GetInfomercialTopicality()*100,2)+"%", contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Topicality: "+TFunctions.LocalizedNumberToString(base.GetInfomercialTopicality()*100,2)+"%", contentX + 5, contentY)
 			contentY :+ lineHeight
-			skin.fontNormal.DrawSimple("Quality Raw: "+MathHelper.NumberToString(GetRawQualityForPlayer(forPlayerID)*100,2)+"%", contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Quality Raw: "+TFunctions.LocalizedNumberToString(GetRawQualityForPlayer(forPlayerID)*100,2)+"%", contentX + 5, contentY)
 			contentY :+ lineHeight
-		skin.fontNormal.DrawSimple("Quality (perceived): "+MathHelper.NumberToString(GetQualityForPlayer(forPlayerID)*100,2)+"%", contentX + 5, contentY)
+		skin.fontNormal.DrawSimple("Quality (perceived): "+TFunctions.LocalizedNumberToString(GetQualityForPlayer(forPlayerID)*100,2)+"%", contentX + 5, contentY)
 		EndIf
 
 
@@ -1806,14 +1806,14 @@ Type TAdContract Extends TBroadcastMaterialSource {_exposeToLua="selected"}
 		'only show image hint when NOT signed (after signing the image
 		'is not required anymore)
 		If owner <= 0 And GetMinImage() > 0 And 0.01*GetPublicImage( GetObservedPlayerID() ).GetAverageImage() < GetMinImage()
-			Local requiredImage:String = MathHelper.NumberToString(GetMinImage()*100,2)
-			Local channelImage:String = MathHelper.NumberToString(GetPublicImage( GetObservedPlayerID() ).GetAverageImage(),2)
+			Local requiredImage:String = TFunctions.LocalizedNumberToString(GetMinImage()*100,2)
+			Local channelImage:String = TFunctions.LocalizedNumberToString(GetPublicImage( GetObservedPlayerID() ).GetAverageImage(),2)
 			imageText = getLocale("AD_CHANNEL_IMAGE_TOO_LOW").Replace("%IMAGE%", requiredImage).Replace("%CHANNELIMAGE%", channelImage)
 
 			msgAreaH :+ msgH
 		ElseIf owner <= 0 And GetMaxImage() > 0 And 0.01*GetPublicImage( GetObservedPlayerID() ).GetAverageImage() > GetMaxImage()
-			Local requiredMaxImage:String = MathHelper.NumberToString(GetMaxImage()*100,2)
-			Local channelImage:String = MathHelper.NumberToString(GetPublicImage( GetObservedPlayerID() ).GetAverageImage(),2)
+			Local requiredMaxImage:String = TFunctions.LocalizedNumberToString(GetMaxImage()*100,2)
+			Local channelImage:String = TFunctions.LocalizedNumberToString(GetPublicImage( GetObservedPlayerID() ).GetAverageImage(),2)
 			imageText = getLocale("AD_CHANNEL_IMAGE_TOO_HIGH").Replace("%IMAGE%", requiredMaxImage).Replace("%CHANNELIMAGE%", channelImage)
 
 			msgAreaH :+ msgH
@@ -1925,7 +1925,7 @@ Type TAdContract Extends TBroadcastMaterialSource {_exposeToLua="selected"}
 		contentY :+ boxH
 		Local minAudienceToShow:String = TFunctions.convertValue(GetMinAudienceForPlayer(forPlayerID), 2)
 		If audienceResult And (KeyManager.IsDown(KEY_LSHIFT) Or KeyManager.IsDown(KEY_RSHIFT))
-				minAudienceToShow = MathHelper.NumberToString(100.0 * GetMinAudienceForPlayer(forPlayerID) / audienceResult.PotentialAudience.GetTotalValue(GetLimitedToTargetGroup()),2)+"%"
+				minAudienceToShow = TFunctions.LocalizedNumberToString(100.0 * GetMinAudienceForPlayer(forPlayerID) / audienceResult.PotentialAudience.GetTotalValue(GetLimitedToTargetGroup()),2)+"%"
 		EndIf
 		'minAudience
 		If minAudienceHightlightType = 1
@@ -1936,8 +1936,13 @@ Type TAdContract Extends TBroadcastMaterialSource {_exposeToLua="selected"}
 			skin.RenderBox(contentX + 5, contentY, 100, -1, minAudienceToShow, "minAudience", EDatasheetColorStyle.Neutral, skin.fontBold)
 		EndIf
 		If KeyManager.IsDown(KEY_LSHIFT) Or KeyManager.IsDown(KEY_RSHIFT)
+			Local spotsToSend:Int = GetSpotsToSend()
 			'penalty per spot
-			skin.RenderBox(contentX + 5 + 104, contentY, 96, -1, TFunctions.convertValue(GetPenaltyForPlayer(forPlayerID)/GetSpotCount(), 2), "money", EDatasheetColorStyle.Bad, skin.fontBold, ALIGN_RIGHT_CENTER)
+			If spotsToSend > 0
+	 			skin.RenderBox(contentX + 5 + 104, contentY, 96, -1, TFunctions.convertValue(GetPenaltyForPlayer(forPlayerID)/(GetSpotsToSend()), 2), "money", EDatasheetColorStyle.Bad, skin.fontBold, ALIGN_RIGHT_CENTER)
+			Else
+	 			skin.RenderBox(contentX + 5 + 104, contentY, 96, -1, TFunctions.convertValue(0, 2), "money", EDatasheetColorStyle.Bad, skin.fontBold, ALIGN_RIGHT_CENTER)
+			EndIf
 			'profit per spot
 			skin.RenderBox(contentX + 5 + 204, contentY, 96, -1, TFunctions.convertValue(GetProfitForPlayer(forPlayerID)/GetSpotCount(), 2), "money", EDatasheetColorStyle.Good, skin.fontBold, ALIGN_RIGHT_CENTER)
 		Else
@@ -1964,23 +1969,23 @@ Type TAdContract Extends TBroadcastMaterialSource {_exposeToLua="selected"}
 			skin.fontBold.DrawSimple("AdContract: "+GetTitle(), contentX + 5, contentY)
 			contentY :+ lineHeight + 6
 			If base.fixedPrice
-				skin.fontNormal.DrawSimple("Fixed Profit: "+GetProfitForPlayer(forPlayerID) + "  (profitBase: "+MathHelper.NumberToString(base.profitBase,2)+")", contentX + 5, contentY)
+				skin.fontNormal.DrawSimple("Fixed Profit: "+GetProfitForPlayer(forPlayerID) + "  (profitBase: "+TFunctions.LocalizedNumberToString(base.profitBase,2)+")", contentX + 5, contentY)
 				contentY :+ lineHeight
-				skin.fontNormal.DrawSimple("Fixed Penalty: "+GetPenaltyForPlayer(forPlayerID) + "  (penaltyBase: "+MathHelper.NumberToString(base.penaltyBase,2)+")", contentX + 5, contentY)
+				skin.fontNormal.DrawSimple("Fixed Penalty: "+GetPenaltyForPlayer(forPlayerID) + "  (penaltyBase: "+TFunctions.LocalizedNumberToString(base.penaltyBase,2)+")", contentX + 5, contentY)
 				contentY :+ lineHeight
 			Else
-				skin.fontNormal.DrawSimple("Dyn. Profit: "+GetProfitForPlayer(forPlayerID) + "  (profitBase: "+MathHelper.NumberToString(base.profitBase,2)+")", contentX + 5, contentY)
+				skin.fontNormal.DrawSimple("Dyn. Profit: "+GetProfitForPlayer(forPlayerID) + "  (profitBase: "+TFunctions.LocalizedNumberToString(base.profitBase,2)+")", contentX + 5, contentY)
 				contentY :+ lineHeight
-				skin.fontNormal.DrawSimple("Dyn. Profit: "+GetPenaltyForPlayer(forPlayerID) + "  (penaltyBase: "+MathHelper.NumberToString(base.penaltyBase,2)+")", contentX + 5, contentY)
+				skin.fontNormal.DrawSimple("Dyn. Profit: "+GetPenaltyForPlayer(forPlayerID) + "  (penaltyBase: "+TFunctions.LocalizedNumberToString(base.penaltyBase,2)+")", contentX + 5, contentY)
 				contentY :+ lineHeight
 			EndIf
 			skin.fontNormal.DrawSimple("Spots To Send: "+GetSpotsToSend()+" of "+GetSpotCount(), contentX + 5, contentY)
 			contentY :+ lineHeight
 			skin.fontNormal.DrawSimple("Spots: "+GetSpotsSent()+" sent, "+GetSpotsPlanned()+" planned", contentX + 5, contentY)
 			contentY :+ lineHeight
-			skin.fontNormal.DrawSimple("Min. Audience: "+GetMinAudienceForPlayer(forPlayerID) + "  ("+MathHelper.NumberToString(GetMinAudiencePercentage()*100,2)+"%)", contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Min. Audience: "+GetMinAudienceForPlayer(forPlayerID) + "  ("+TFunctions.LocalizedNumberToString(GetMinAudiencePercentage()*100,2)+"%)", contentX + 5, contentY)
 			contentY :+ lineHeight
-			skin.fontNormal.DrawSimple("Channel Image: " + MathHelper.NumberToString(GetMinImage()*100,2)+"%" +" - " + MathHelper.NumberToString(GetMaxImage()*100,2)+"%", contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Channel Image: " + TFunctions.LocalizedNumberToString(GetMinImage()*100,2)+"%" +" - " + TFunctions.LocalizedNumberToString(GetMaxImage()*100,2)+"%", contentX + 5, contentY)
 			contentY :+ lineHeight
 			skin.fontNormal.DrawSimple("Target Group: " + GetLimitedToTargetGroup() + " (" + GetLimitedToTargetGroupString() + ")", contentX + 5, contentY)
 			contentY :+ lineHeight
@@ -2130,26 +2135,31 @@ Type TAdContract Extends TBroadcastMaterialSource {_exposeToLua="selected"}
 	'Wird bisher nur in der LUA-KI verwendet
 	'Wie dringend ist es diese Spots zu senden
 	Method GetAcuteness:Float() {_exposeToLua}
+		Local daysLeft:Int = Self.getDaysLeft()
 		'no "acuteness" for obsolete contracts
-		If Self.getDaysLeft() < 0 Then Return 0
+		If daysLeft < 0 Then Return 0
 
 		'base value is audience which typically corrensponds to profit
 		Local result:Float = getMinAudiencePercentage() * 100
+		Local tgFactor:Float = 1.0
+		Local tgCount:Int = 0
 		'min audience for target groups needs to be scaled 
-		If IsLimitedToTargetGroup(TVTTargetGroup.CHILDREN) Then result:* 8
-		If IsLimitedToTargetGroup(TVTTargetGroup.TEENAGERS) Then result:* 10
-		If IsLimitedToTargetGroup(TVTTargetGroup.HOUSEWIVES) Then result:* 6
-		If IsLimitedToTargetGroup(TVTTargetGroup.EMPLOYEES) Then result:* 6
-		If IsLimitedToTargetGroup(TVTTargetGroup.UNEMPLOYED) Then result:* 5
-		If IsLimitedToTargetGroup(TVTTargetGroup.MANAGERS) Then result:* 14
-		If IsLimitedToTargetGroup(TVTTargetGroup.PENSIONERS) Then result:* 4
-		If IsLimitedToTargetGroup(TVTTargetGroup.WOMEN) Then result:* 2
-		If IsLimitedToTargetGroup(TVTTargetGroup.MEN) Then result:* 2
+		If IsLimitedToTargetGroup(TVTTargetGroup.CHILDREN) Then tgFactor:+ 8; tgCount:+1;
+		If IsLimitedToTargetGroup(TVTTargetGroup.TEENAGERS) Then tgFactor:+ 10; tgCount:+1;
+		If IsLimitedToTargetGroup(TVTTargetGroup.HOUSEWIVES) Then tgFactor:+ 6; tgCount:+1;
+		If IsLimitedToTargetGroup(TVTTargetGroup.EMPLOYEES) Then  tgFactor:+ 6; tgCount:+1;
+		If IsLimitedToTargetGroup(TVTTargetGroup.UNEMPLOYED) Then  tgFactor:+ 5; tgCount:+1;
+		If IsLimitedToTargetGroup(TVTTargetGroup.MANAGERS) Then  tgFactor:+ 14; tgCount:+1;
+		If IsLimitedToTargetGroup(TVTTargetGroup.PENSIONERS) Then tgFactor:+ 4; tgCount:+1;
+		If IsLimitedToTargetGroup(TVTTargetGroup.WOMEN) Then  tgFactor:+ 2; tgCount:+1;
+		If IsLimitedToTargetGroup(TVTTargetGroup.MEN) Then  tgFactor:+ 2; tgCount:+1;
+
+		If tgCount > 0 then result = result * (tgFactor / tgCount)
 		'aim at one spot per day left
-		If Self.getDaysLeft() < Self.getSpotsToSend() Then result:* 2
+		If daysLeft < 4 And daysLeft < Self.getSpotsToSend() Then result:* 2
 		If Self.getSpotsToSend() = 1 Then result:* 2
 		'big effort on last day
-		If Self.getDaysLeft() = 0 Then result:* 4
+		If daysLeft = 0 Then result:* 4
 		'the more spots sent the worse failing will be (other spots wasted)
 		If GetSpotsToSendPercentage() < 1 Then result:/ (1-GetSpotsToSendPercentage())
 		'TODO consider profit/penalty more directly?

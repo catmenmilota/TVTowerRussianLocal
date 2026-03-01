@@ -21,6 +21,15 @@ function TaskBoss:typename()
 end
 
 
+function TaskBoss:getStrategicPriority()
+	local player = getPlayer()
+	if not player.onOwnFloor then
+		return 0.0
+	end
+	return 1.0
+end
+
+
 function TaskBoss:Activate()
 	-- Was getan werden soll:
 	self.CheckCreditJob = JobCheckCredit()
@@ -46,7 +55,7 @@ function TaskBoss:BeforeBudgetSetup()
 	local money = player.money
 	if player.coverage > 0.9 and player.maxTopicalityBlocksCount > 12 then
 		--do not spend all available money (image 0-100)
-		self.BudgetWeight = TVT:GetImage(TVT.ME) / 15
+		self.BudgetWeight = player.image / 15
 	else
 		self.BudgetWeight = 0
 	end
@@ -67,6 +76,8 @@ function TaskBoss:BeforeBudgetSetup()
 		end
 	elseif (money - credit) > 100000 then
 		self.NeededInvestmentBudget = credit / 10
+	elseif money > 3000000 and credit > 500000 then
+		self.NeededInvestmentBudget = 500000
 	else
 		self.InvestmentPriority = 0
 		self.NeededInvestmentBudget = 10000

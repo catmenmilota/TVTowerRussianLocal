@@ -8,7 +8,7 @@ Rem
 EndRem
 SuperStrict
 
-Import "Dig/base.util.math.bmx"
+Import "basefunctions.bmx"
 
 Global VersionDate:String = "unknown"
 Global VersionString:String = ""
@@ -16,16 +16,12 @@ Global CopyrightString:String = ""
 
 Global TVTPlayerCount:Int = 4
 
-Const CURRENCYSIGN:String = Chr(8364) 'eurosign
-
-
 Global TVTDebugInfo:Int = False
 Global TVTGhostBuildingScrollMode:Int = False
 
+'delegate - replace GetFormattedCurrency by TFunctions.GetFormattedCurrency
 Function GetFormattedCurrency:String(money:Long)
-	'160 is the "no breaking space" code
-	'8239 is the "narrow no breaking space" code
-	return MathHelper.DottedValue(money) + Chr(160) + CURRENCYSIGN
+	Return TFunctions.GetFormattedCurrency(money)
 EndFunction
 
 'collection of all constants types (so it could be exposed
@@ -79,6 +75,7 @@ Type TVTGameConstants {_exposeToLua}
 	Field RoomFlag:TVTRoomFlag = new TVTRoomFlag
 	Field RoomDoorFlag:TVTRoomDoorFlag = new TVTRoomDoorFlag
 	Field BuildingTargetType:TVTBuildingTargetType = new TVTBuildingTargetType
+	Field FigureTargetFlag:TVTFigureTargetFlag = New TVTFigureTargetFlag
 End Type
 Global GameConstants:TVTGameConstants = New TVTGameConstants
 
@@ -1284,8 +1281,10 @@ Type TVTProgrammeDataFlag {_exposeToLua}
 	Const INVISIBLE:Int = 2048
 	'a previously "live" programme is now only a "recorded live programme"
 	Const LIVEONTAPE:Int = 4096
+	'flag that no remake should be produced
+	Const NOREMAKE:Int = 8192
 
-	Const count:Int = 12
+	Const count:Int = 13
 
 
 	Function GetAtIndex:Int(index:Int = 0)
@@ -1310,6 +1309,7 @@ Type TVTProgrammeDataFlag {_exposeToLua}
 			Case SCRIPTED   Return "scripted"
 			Case INVISIBLE  Return "invisible"
 			Case LIVEONTAPE Return "liveontape"
+			Case NOREMAKE   Return "noremake"
 			Default
 				'loop through all flag-entries and add them if contained
 				Local result:String
@@ -1413,6 +1413,15 @@ Type TVTBuildingTargetType
 	Const DOOR:Int = 1
 	Const HOTSPOT:Int = 2
 End Type
+
+
+Type TVTFigureTargetFlag
+	Const NONE:Int = 0
+	Const SET_FIGURE_UNCONTROLLABLE:Int = 1
+	Const MUST_BE_IN_BUILDING_TO_START:Int = 2
+	Const CREATED_BY_DEVSHORTCUT:Int = 4
+End Type
+
 
 
 Type TVTProgrammeLifecycleFlag

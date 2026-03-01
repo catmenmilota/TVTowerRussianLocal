@@ -132,6 +132,218 @@ Import "game.misc.savegameserializers.bmx"
 Import "Dig/base.util.bmxng.objectcountmanager.bmx"
 ?
 
+' define what subfolders need to exist (and be writeable)
+' ("" means application folder itself)
+Global requiredWriteableSubfolders:String[] = ["", "config", "logfiles", "savegames"]
+Global applicationStoragePath:String
+' identify whether we run portable or use user directories
+Global applicationStorageMode:Int = ConfigureStorageMode(applicationStoragePath, requiredWriteableSubfolders)
+' after identification log directory can be used
+' (without logs would only be written when exiting the application
+TLogger.SetLogDirectoryUsable()
+
+' check wether to run in "portable" mode or not (and use user directories)
+Function ConfigureStorageMode:Int(applicationStoragePath:String var, writableFoldersToCheck:String[])
+	TLogger.Log("ConfigureStorageMode", "Identifying storage mode.", LOG_DEBUG)
+	
+	Local baseDir:String = AppDir
+	Local userDir:String = baseDir
+
+	Const autoMode:Int = 0
+	Const portableMode:Int = 1
+	Const userdirMode:Int = 2
+	Local storageMode:Int 
+
+
+
+	' === CHECK LOCAL (SHIPPED) CONFIG PREFERENCE ===
+	Local xml:TXmlHelper = TXmlHelper.Create("config/settings.xml", "config", True)
+	Local configStorageMode:Int = xml.FindValueInt(xml.GetRootNode(), "storage_mode", autoMode)
+	Select configStorageMode
+		case portableMode
+			TLogger.Log("ConfigureStorageMode", "Portable storage mode requested via settings.xml.", LOG_DEBUG)
+		case userdirMode
+			TLogger.Log("ConfigureStorageMode", "Userdir storage mode requested via settings.xml.", LOG_DEBUG)
+		default
+			TLogger.Log("ConfigureStorageMode", "Auto storage mode requested via settings.xml.", LOG_DEBUG)
+			configStorageMode = autoMode
+	End Select
+	storageMode = configStorageMode
+	
+
+	' === CHECK COMMAND LINE PREFERENCE ===
+	Local commandlineStorageMode:Int = -1
+	For Local arg:String = EachIn AppArgs
+		'only interested in args starting with "-"
+		If arg.Find("-") <> 0 Then Continue
+
+		Select arg.ToLower()
+			case "portable"
+				TLogger.Log("ConfigureStorageMode", "Portable storage mode requested via commandline.", LOG_DEBUG)
+				commandlineStorageMode = portableMode
+			case "userdir"
+				commandlineStorageMode = userdirMode
+				TLogger.Log("ConfigureStorageMode", "Userdir storage mode requested via commandline.", LOG_DEBUG)
+		End Select
+	Next
+	If commandlineStorageMode >= 0
+		storageMode = commandlineStorageMode
+	EndIf
+	
+
+	Local canWrite:Int
+	If storageMode = autoMode or storageMode = portableMode
+		If autoMode
+			TLogger.Log("ConfigureStorageMode", "Auto prioritizes ~qPortable~q. Uses ~qUserdir~q as fallback..", LOG_DEBUG)
+		EndIf
+		TLogger.Log("ConfigureStorageMode", "Portable storage directory path: ~q" + baseDir + "~q.", LOG_DEBUG)
+
+		' deinit a potentially previously inited maxIO
+		' (eg. on multiple runs of this function)
+		If MaxIO.IsInit() 
+			MaxIO.DeInit()
+			delay(50) 'give some time for file handle closing
+		EndIf
+
+		'=== ENSURE FOLDER STRUCTURE EXISTS ===
+		EnsureDirectoriesExist(writableFoldersToCheck)
+
+		'=== CHECK WRITABILITY ===
+		canWrite = WriteTest(writableFoldersToCheck)
+
+		' if writing failed and auto mode is set, fallback to userdirMode
+		' if writing succeeded, settle with portableMode
+		If storageMode = autoMode
+			If not canWrite 
+				TLogger.Log("ConfigureStorageMode", "Portable storage directory is NOT writable. Falling back to userdir storage mode.", LOG_DEBUG)
+				storageMode = userdirMode
+			Else
+				storageMode = portableMode
+			EndIf
+		EndIf
+		If canWrite
+			TLogger.Log("ConfigureStorageMode", "Portable storage directory is writable.", LOG_DEBUG)
+		EndIf
+	EndIf
+
+	If storageMode = userdirMode
+		'=== INITIALIZE VIRTUAL FILE SYSTEM ===
+		' The virtual file system allows to transparently overlay folders
+		' and to restrict write-access to a specific directory (WriteDir).
+		' baseDir = Directory of the binary (application)
+		' prefDir = "~/.local/share/TVTower"                                (Linux)
+		'           "C:\Users\USERNAME\AppData\Roaming\TVTower_org\TVTower" (Windows)
+		'           "/Users/USERNAME/Library/Application Support/TVTower"   (Mac OS)
+		If not MaxIO.IsInit() Then MaxIO.Init()
+		baseDir = MaxIO.GetBaseDir()
+
+		'attention GetPrefDir() already creates the folder!
+		userDir = MaxIO.GetPrefDir("TVTower_org", "TVTower")
+		'strip trailing slash
+		baseDir = ExtractDir(baseDir)
+		userDir = ExtractDir(userDir)
+
+		'=== MOUNT VIRTUAL LAYERS ===
+		' Mount "preference directory"/user dir first so it can override
+		' any file inside of "base directory. (First come, first served)
+		' Mount as "/" (root) so files next to "TVTower.bin" are 
+		' reachable via LoadFile("myfile.txt")
+		MaxIO.Mount(userDir, "/", 0) '0 = PREPEND, 1 = APPEND
+		'mount root, to allow READING from it (for file stat - FileType())
+		MaxIO.Mount(baseDir, "/", 1) 'APPEND, lower "search" priority
+		TLogger.Log("ConfigureStorageMode", "Userdir storage directory path: ~q" + userDir + "~q. (searched first)", LOG_DEBUG)
+		TLogger.Log("ConfigureStorageMode", "Userdir overlays base directory path: ~q" + baseDir + "~q. (searched next)", LOG_DEBUG)
+
+		'Redirect any file-write attempts to "userDir"
+		MaxIO.SetWriteDir(userDir)
+		'TLogger.Log("ConfigureStorageMode", "Set write directory to ~q" + userDir + "~q.", LOG_DEBUG)
+
+		'=== ENSURE FOLDER STRUCTURE EXISTS ===
+		EnsureDirectoriesExist(writableFoldersToCheck)
+
+		'=== CHECK WRITABILITY ===
+		'use local URI here! (writing directly to the real paths like
+		'"/home/user/.local/share/TVTower/file.txt" is not possible)
+		canWrite = WriteTest(writableFoldersToCheck)
+		If canWrite
+			TLogger.Log("ConfigureStorageMode", "Userdir storage directory is writable.", LOG_DEBUG)
+		EndIf
+		
+		'TODO: 
+ 		' create version specific folder, add (prepend) as "/" mount point
+ 		' file priority then:
+		' -> version specific -> userdir specific -> shipped
+		' but savegames also are stored version specific then
+		' (while loading includes also the userdir specific etc)
+	EndIf
+
+	'End application as we cannot write to something
+	If Not canWrite
+		Local message:String
+		If storageMode = portableMode
+			message = "Portable storage directory is NOT writable. Path: ~q" + userDir + "~q. Try configuring storage mode ~qAuto~q or ~qUserdir~q"
+		Else
+			message = "Userdir storage directory is NOT writable. Path: ~q" + userDir + "~q. Try configuring storage mode ~qAuto~q or ~qPortable~q"
+		EndIf
+		message :+ " in ~q" + userdir + "/config/settings.xml~q. "
+		If storageMode = portableMode
+			message :+ "Alternatively try starting TVTower with the parameter ~q-Userdir~q."
+		Else
+			message :+ "Alternatively try starting TVTower with the parameter ~q-Portable~q."
+		Endif
+			
+		TLogger.Log("ConfigureStorageMode", message, LOG_ERROR)
+		Notify(message.Replace(". ", ".~n"), LOG_ERROR)
+		End
+	EndIf
+
+	
+
+	If storageMode = portableMode
+		TLogger.Log("ConfigureStorageMode", "Portable storage mode configured.", LOG_DEBUG)
+	Else
+		TLogger.Log("ConfigureStorageMode", "Userdir storage mode configured.", LOG_DEBUG)
+	EndIf
+	
+	'assign storage path (so others can use it)
+	applicationStoragePath = userDir
+
+	Return storageMode
+
+	
+	Function EnsureDirectoriesExist:Int(dirsToTest:String[])
+		'ensure dir existence (if possible)
+		For local dir:String = EachIn dirsToTest
+			If Not dir Then Continue 'skip local folder
+
+			If TFileHelper.EnsureWriteableDirectoryExists(dir)
+				TLogger.Log("ConfigureStorageMode", "Created missing subdirectory: ~q"+dir+"~q", LOG_DEBUG)
+			EndIf
+		Next
+	End Function
+	
+	Function WriteTest:Int(dirsToTest:String[])
+
+		For local dir:String = EachIn dirsToTest
+			If dir Then dir :+ "/"
+			Local uri:String = dir + "writetestfile_" + Millisecs() + ".txt"
+			If CreateFile(uri)
+				If DeleteFile(uri) 
+					Continue
+				Else
+					TLogger.Log("ConfigureStorageMode", "Failed to delete write-test-file ~q"+uri+"~q.", LOG_ERROR)
+					Return False
+				EndIf
+			Else
+				TLogger.Log("ConfigureStorageMode", "Failed to create write-test-file ~q"+uri+"~q.", LOG_ERROR)
+				Return False
+			EndIf
+		Next
+		Return True
+	End Function
+End Function
+
+
 
 ?Not bmxng
 'notify users when there are XML-errors
@@ -173,6 +385,7 @@ Global MainMenuJanitor:TFigureJanitor
 Global ScreenGameSettings:TScreen_GameSettings = Null
 Global ScreenMainMenu:TScreen_MainMenu = Null
 Global Init_Complete:Int = 0
+Global mainRenderImage:TRenderImage
 
 Global RURC:TRegistryUnloadedResourceCollection = TRegistryUnloadedResourceCollection.GetInstance()
 
@@ -293,21 +506,23 @@ Type TApp
 			'override default settings with app arguments (params when executing)
 			obj.ApplyAppArguments()
 			'do not init graphics, this is done some lines later
-			obj.ApplySettings(False)
+			obj.ApplySettings()
 
 			GetDeltatimer().Init(updatesPerSecond, obj.config.GetInt("fps", framesPerSecond))
 			GetDeltaTimer()._funcUpdate = update
 			GetDeltaTimer()._funcRender = render
+			
+			Local designedGameW:Int = 800
+			Local designedGameH:Int = 600
 
 			GetGraphicsManager().SetVsync(obj.config.GetBool("vsync", vsync))
-			'GetGraphicsManager().SetResolution(1024,768)
-			If GetGraphicsManager().GetFullscreen()
-				GetGraphicsManager().SetResolution(800, 600)
+			GetGraphicsManager().SetDesignedSize(designedGameW, designedGameH)
+			GetGraphicsManager().SetScaleQuality(obj.config.GetInt("scalequality", 1)) 'default to smooth
+			If GetGraphicsManager().IsFullscreen()
+				GetGraphicsManager().InitGraphics(designedGameW, designedGameH)
 			Else
-				GetGraphicsManager().SetResolution(obj.config.GetInt("screenW", 800), obj.config.GetInt("screenH", 600))
+				GetGraphicsManager().InitGraphics(obj.config.GetInt("screenW", designedGameW), obj.config.GetInt("screenH", designedGameH))
 			EndIf
-			GetGraphicsManager().SetDesignedResolution(800,600)
-			GetGraphicsManager().InitGraphics()
 
 			GameConfig.InRoomTimeSlowDownMod = obj.config.GetInt("inroomslowdown", 100) / 100.0
 			GameConfig.autoSaveIntervalHours = obj.config.GetInt("autosaveInterval", 0)
@@ -367,27 +582,31 @@ Type TApp
 
 			Select arg.ToLower()
 				?Win32
-				Case "-directx7", "-directx"
-					TLogger.Log("TApp.ApplyAppArguments()", "Manual Override of renderer: DirectX 7", LOG_LOADING)
-					GetGraphicsManager().SetRenderer(GetGraphicsManager().RENDERER_DIRECTX7)
-					config.AddNumber("renderer", GetGraphicsManager().RENDERER_DIRECTX7)
-				Case "-directx9"
+				Case "-directx9", "-directx"
 					TLogger.Log("TApp.ApplyAppArguments()", "Manual Override of renderer: DirectX 9", LOG_LOADING)
-					GetGraphicsManager().SetRenderer(GetGraphicsManager().RENDERER_DIRECTX9)
-					config.AddNumber("renderer", GetGraphicsManager().RENDERER_DIRECTX9)
+					GetGraphicsManager().SetRendererBackend(GetGraphicsManager().RENDERER_BACKEND_D3D9)
+					config.AddNumber("renderer", GetGraphicsManager().RENDERER_BACKEND_D3D9)
+				?
 				Case "-directx11"
 					TLogger.Log("TApp.ApplyAppArguments()", "Manual Override of renderer: DirectX 11", LOG_LOADING)
-					GetGraphicsManager().SetRenderer(GetGraphicsManager().RENDERER_DIRECTX11)
-					config.AddNumber("renderer", GetGraphicsManager().RENDERER_DIRECTX11)
+					GetGraphicsManager().SetRendererBackend(GetGraphicsManager().RENDERER_BACKEND_D3D11)
+					config.AddNumber("renderer", GetGraphicsManager().RENDERER_BACKEND_D3D11)
 				?
 				Case "-opengl"
 					TLogger.Log("TApp.ApplyAppArguments()", "Manual Override of renderer: OpenGL", LOG_LOADING)
-					GetGraphicsManager().SetRenderer(GetGraphicsManager().RENDERER_OPENGL)
-					config.AddNumber("renderer", GetGraphicsManager().RENDERER_OPENGL)
-				Case "-bufferedopengl"
-					TLogger.Log("TApp.ApplyAppArguments()", "Manual Override of renderer: Buffered OpenGL", LOG_LOADING)
-					GetGraphicsManager().SetRenderer(GetGraphicsManager().RENDERER_BUFFEREDOPENGL)
-					config.AddNumber("renderer", GetGraphicsManager().RENDERER_BUFFEREDOPENGL)
+					GetGraphicsManager().SetRendererBackend(GetGraphicsManager().RENDERER_BACKEND_OPENGL)
+					config.AddNumber("renderer", GetGraphicsManager().RENDERER_BACKEND_OPENGL)
+				?macos
+				Case "-metal"
+					Local metalRendererIndex:Int = GetGraphicsManager().GetRendererBackend("metal")
+					If GetGraphicsManager().IsRendererAvailable(metalRendererIndex)
+						TLogger.Log("TApp.ApplyAppArguments()", "Manual Override of renderer: Metal", LOG_LOADING)
+						GetGraphicsManager().SetRendererBackend(metalRendererIndex)
+						config.AddNumber("renderer", metalRendererIndex)
+					Else
+						TLogger.Log("TApp.ApplyAppArguments()", "Manual Override of renderer: Metal. Failed (Metal backend not available)", LOG_LOADING)
+					EndIf
+				?
 			End Select
 		Next
 	End Method
@@ -505,6 +724,9 @@ Type TApp
 		'a file. Normally you should write to "test.user.xml" to overwrite
 		'the users customized settings
 
+		'if directory does not exist, create it
+		TFileHelper.EnsureWriteableDirectoryExists(ExtractDir(settingsUserPath))
+
 		'remove "DEV_" ignore key so they get stored too
 		Local storage:TDataXmlStorage = New TDataXmlStorage
 		storage.SetRootNodeKey("config")
@@ -513,55 +735,36 @@ Type TApp
 	End Method
 
 
-	Method ApplySettings:Int(doInitGraphics:Int = True)
-		Local adjusted:Int = False
-		If GetGraphicsManager().SetFullscreen(config.GetBool("fullscreen", False), False)
-			TLogger.Log("ApplySettings()", "SetFullscreen = "+config.GetBool("fullscreen", False), LOG_DEBUG)
-			'until GLSDL works as intended:
-			?Not bmxng
-			adjusted = True
-			?
+	Method ApplySettings:Int()
+		If GetGraphicsManager().SetDisplayMode(config.GetInt("displaymode", 0))
+			TLogger.Log("ApplySettings()", "SetDisplayMode = "+config.GetInt("displaymode", 0), LOG_DEBUG)
 		EndIf
-		If GetGraphicsManager().SetRenderer(config.GetInt("renderer", GetGraphicsManager().GetRenderer()))
-			TLogger.Log("ApplySettings()", "SetRenderer = "+config.GetInt("renderer", GetGraphicsManager().GetRenderer()), LOG_DEBUG)
-			'until GLSDL works as intended:
-			?Not bmxng
-			adjusted = True
-			?
+		If GetGraphicsManager().SetRendererBackend(config.GetInt("renderer", GetGraphicsManager().GetRendererBackend()))
+			TLogger.Log("ApplySettings()", "SetRenderer = "+config.GetInt("renderer", GetGraphicsManager().GetRendererBackend()), LOG_DEBUG)
 		EndIf
 		If GetGraphicsManager().SetColordepth(config.GetInt("colordepth", 16))
 			TLogger.Log("ApplySettings()", "SetColordepth = "+config.GetInt("colordepth", -1), LOG_DEBUG)
-			'until GLSDL works as intended:
-			?Not bmxng
-			adjusted = True
-			?
 		EndIf
 		If GetGraphicsManager().SetVSync(config.GetBool("vsync", True))
 			TLogger.Log("ApplySettings()", "SetVSync = "+config.GetBool("vsync", False), LOG_DEBUG)
-			'until GLSDL works as intended:
-			?Not bmxng
-			adjusted = True
-			?
 		EndIf
-		If GetGraphicsManager().SetResolution(config.GetInt("screenW", 800), config.GetInt("screenH", 600))
-			TLogger.Log("ApplySettings()", "SetResolution = "+config.GetInt("screenW", 800)+"x"+config.GetInt("screenH", 600), LOG_DEBUG)
-			'until GLSDL works as intended:
-			?Not bmxng
-			adjusted = True
-			?
+		If GetGraphicsManager().SetScaleQuality(config.GetInt("scaleQuality", 1))
+			TLogger.Log("ApplySettings()", "SetScaleQuality = "+config.GetInt("scaleQuality", 1), LOG_DEBUG)
+			mainRenderImage = Null 'so it gets recreated with new scale quality
 		EndIf
-		If GetGraphicsManager().GetFullscreen()
-			GetGraphicsManager().SetResolution(800, 600)
+
+		If GetGraphicsManager().ResizeWindow(config.GetInt("screenW", 800), config.GetInt("screenH", 600))
+			TLogger.Log("ApplySettings()", "SetWindowSize = "+config.GetInt("screenW", 800)+"x"+config.GetInt("screenH", 600), LOG_DEBUG)
 		EndIf
-		If adjusted And doInitGraphics Then GetGraphicsManager().InitGraphics()
+		'If GetGraphicsManager().IsFullscreen()
+		'	GetGraphicsManager().ResizeWindow(800, 600)
+		'EndIf
 
 
 		GameConfig.InRoomTimeSlowDownMod = config.GetInt("inroomslowdown", 100) / 100.0
 		GameConfig.autoSaveIntervalHours = config.GetInt("autosaveInterval", 0)
 
 		GetDeltatimer().SetRenderRate(config.GetInt("fps", -1))
-
-		adjusted = False
 
 
 
@@ -635,6 +838,10 @@ Type TApp
 		'select language
 		TLocalization.SetCurrentLanguage(languageCode)
 
+		TFunctions.decimalDelimiter = GetLocale("NUMBER_DECIMAL_SEPARATOR")
+		TFunctions.thousandsDelimiter = GetLocale("NUMBER_GROUP_SEPARATOR").replace("*","")
+		TFunctions.currencyPosition = Int(GetLocale("CURRENCY_FORMAT"))
+
 		'skip further actions if the same language is already set
 		If oldLang = languageCode Then Return False
 
@@ -679,7 +886,7 @@ Type TApp
 			filename = "screenshot_"+padded+".png"
 		Wend
 
-		Local img:TPixmap = VirtualGrabPixmap(0, 0, GetGraphicsManager().GetWidth(), GetGraphicsManager().GetHeight())
+		Local img:TPixmap = GetGraphicsManager().VirtualGrabPixmap()
 
 		'add overlay
 		If overlay Then overlay.DrawOnImage(img, GetGraphicsManager().GetWidth() - overlay.GetWidth() - 10, 10, -1, Null, TColor.Create(255,255,255,0.5))
@@ -1170,9 +1377,54 @@ endrem
 						'DEV_switchRoom(targetRoom)
 					'EndIf
 					If Not GetPlayer().GetFigure().IsInRoom(room)
-						DEV_FastForward_TargetReached = False
-						__SwitchFastForward(True)
-						GetPlayer().GetFigure().SendToDoor(targetDoor)
+						'if player has control, directly move it
+						'but if not, then just enqueue the new target
+						'(but ensure to only do once)
+						If GetPlayer().GetFigure().IsControllable()
+							If GetPlayer().GetFigure().SendToDoor(targetDoor)
+								' ATTENTION: for now "SendtoDoor" sets 
+								' the target as current one - but this
+								' might not be guaranteed. So adjust
+								' this code, when changing SendToDoor 
+								' logic!
+								Local currentTarget:TFigureTargetBase = GetPlayer().GetFigure().GetTarget()
+								If currentTarget and currentTarget.targetObj = targetDoor
+									currentTarget.SetFlag(TVTFigureTargetFlag.CREATED_BY_DEVSHORTCUT)
+								EndIf
+							
+								DEV_FastForward_TargetReached = False
+								__SwitchFastForward(True)
+							EndIf
+						Else
+							Local newTarget:TFigureTargetBase = new TFigureTarget.Init(targetDoor, TVTFigureTargetFlag.CREATED_BY_DEVSHORTCUT)
+							Local newTargetSet:Int = False
+
+							' check targets - and replace a potentially
+							' existing CREATED_BY_DEVSHORTCUT ones
+							' except it is the current one!
+							Local targets:TFigureTargetBase[] = GetPlayer().GetFigure().GetTargets()
+							'there is more than the "current" ?
+							If targets.length > 1
+								For Local i:Int = 1 until targets.length
+									If targets[i].HasFlag(TVTFigureTargetFlag.CREATED_BY_DEVSHORTCUT)
+										If GetPlayer().GetFigure().ReplaceTarget(targets[i], newTarget)
+											newTargetSet = True
+											Exit
+										EndIf
+									EndIf
+								Next
+							EndIf
+							If not newTargetSet
+								' ATTENTION: this will fast forward while
+								' a figure is not-controllable which might
+								' be NOT just because it is "computer control"-
+								' sent to a room!
+								If GetPlayer().GetFigure().AddTarget(newTarget)
+									DEV_FastForward_TargetReached = False
+									__SwitchFastForward(True)
+								EndIf
+							EndIf
+						EndIf
 					EndIf
 				EndIf
 			EndIf
@@ -1252,9 +1504,9 @@ endrem
 			EndIf
 
 			If ScreenCollection.GetCurrentScreen()
-				bf.DrawBox("Screen: "+ScreenCollection.GetCurrentScreen().name + " \| " + GetGraphicsManager().GetRendererName(), 0, textY, GraphicsWidth()-5, 20, SALIGN_RIGHT_TOP, SCOLOR8.WHITE)
+				bf.DrawBox("Screen: "+ScreenCollection.GetCurrentScreen().name + " \| " + GetGraphicsManager().GetRendererBackendName(), 0, textY, GraphicsWidth()-5, 20, SALIGN_RIGHT_TOP, SCOLOR8.WHITE)
 			Else
-				bf.DrawBox("Screen: Main \| " + GetGraphicsManager().GetRendererName(), 0, textY, GraphicsWidth()-5, 20, SALIGN_RIGHT_TOP, SCOLOR8.WHITE)
+				bf.DrawBox("Screen: Main \| " + GetGraphicsManager().GetRendererBackendName(), 0, textY, GraphicsWidth()-5, 20, SALIGN_RIGHT_TOP, SCOLOR8.WHITE)
 			EndIf
 
 		EndIf
@@ -1312,16 +1564,22 @@ endrem
 
 
 	Function Render:Int()
+		GetGraphicsManager().UpdateWindowSize()
+
 		'cls only needed if virtual resolution is enabled, else the
 		'background covers everything
 		If GetGraphicsManager().HasBlackBars()
 			SetClsColor 0,0,0
-			'use graphicsmanager's cls as it resets virtual resolution
-			'first
-			GetGraphicsManager().Cls()
+			Cls()
 		EndIf
 
 		TProfiler.Enter(_profilerKey_Draw)
+		
+		If not mainRenderImage
+			mainRenderImage = CreateRenderImage(UInt(GetGraphicsManager().designedSize.x), UInt(GetGraphicsManager().designedSize.y), FILTEREDIMAGE)
+		EndIf
+		SetRenderImage(mainRenderImage)
+		Cls()
 
 		'set game cursor to 0/default
 		GetGameBase().SetCursor(TGameBase.CURSOR_DEFAULT)
@@ -1458,11 +1716,41 @@ endrem
 		GUIManager.Draw(systemState)
 
 
+		SetRenderImage(Null)
+		' something borks up an internal setting - just scaling ONE window
+		' dimension (so only width OR height) would slide the viewport
+		' over the image. This get+set of the virtual resolution fixes
+		' the issue (for now).
+		Local vpBackup:SRectI = GetGraphicsManager().DisableVirtualResolution()
+		GetGraphicsManager().EnableVirtualResolution(vpBackup)
+
+		DrawImage(mainRenderImage, 0, 0)
+
+Rem
+		'alternatively --- if we would like to scale on our own
+		Local vpBackup:SRectI = GetGraphicsManager().DisableVirtualResolution()
+		Local scaleX:Float = GetGraphicsManager().canvasSize.x / Float (GetGraphicsManager().designedSize.x) 
+		Local scaleY:Float = GetGraphicsManager().canvasSize.y / Float (GetGraphicsManager().designedSize.y) 
+		SetScale scaleX, scaleY
+		DrawImage(mainRenderImage, GetGraphicsManager().canvasPos.x, GetGraphicsManager().canvasPos.y)
+		SetScale 1.0, 1.0
+		GetGraphicsManager().EnableVirtualResolution(vpBackup)
+Endrem
+
+		'disable virtual resolution letterbox so we can draw mouse cursor
+		'and other stuff also over letterbox bars
+		Local currentVirtualResolutionVP:SRectI = GetGraphicsManager().DisableVirtualResolutionLetterbox()
+
 		'mnouse cursor
-'		If Not spriteMouseCursor Then spriteMouseCursor = GetSpriteFromRegistry("gfx_mousecursor")
 		local cursorOffsetX:Int
 		local cursorOffsetY:Int
 		local cursorSprite:TSprite
+		
+		'as we render the cursor outside of the virtual resolution we need
+		'to adjust its position
+		Local cursorX:Int = GetGraphicsManager().WindowMouseX()
+		Local cursorY:Int = GetGraphicsManager().WindowMouseY()
+		Local cursorPos:SVec2I = GetGraphicsManager().WindowToDesignedCoordinate(cursorX, cursorY, False)
 		
 		Select GetGameBase().GetCursor()
 			'drag indicator
@@ -1497,7 +1785,7 @@ endrem
 			cursorOffsetY = cursorSprite.offset.GetTop()
 			Local oldA:Float = GetAlpha()
 			SetAlpha(oldA * GetGameBase().GetCursorAlpha())
-			cursorSprite.Draw(MouseManager.x, MouseManager.y)
+			cursorSprite.Draw(cursorPos.x, cursorPos.y)
 			SetAlpha(oldA)
 		endif
 
@@ -1505,11 +1793,40 @@ endrem
 			Case TGameBase.CURSOR_EXTRA_FORBIDDEN
 				local oldA:Float = GetAlpha()
 				SetAlpha oldA * 0.65 + Float(Min(0.15, Max(-0.20, Sin(MilliSecs() / 6) * 0.20)))
-				GetSpriteFromRegistry("gfx_mousecursor_extra_forbidden").Draw(MouseManager.x - cursorOffsetX, MouseManager.y - cursorOffsetY)
+				GetSpriteFromRegistry("gfx_mousecursor_extra_forbidden").Draw(cursorPos.x - cursorOffsetX, cursorPos.y - cursorOffsetY)
 				SetAlpha oldA
 		End Select
+		
+		
 
-'		DrawOval(MouseManager.x-2, MouseManager.y-2, 4,4)
+		'---- virtual resolution debug information
+		Local showVirtualResolutionDebug:Int = False
+		If showVirtualResolutionDebug
+			Local virtualResolutionDebugX:Int = 5
+			Local virtualResolutionDebugY:Int = 5
+			'draw at original size (unscaled)
+			GetGraphicsManager().DisableVirtualResolution()
+			SetColor 0,0,0
+			Local oldAlpha:Float = GetAlpha()
+			SetAlpha oldAlpha * 0.5
+			DrawRect(0,0,215,160)
+			SetAlpha oldAlpha
+			SetColor 255,255,255
+			DrawText("Virtual Resolution:", virtualResolutionDebugX, virtualResolutionDebugY)
+			DrawText(" MouseManagerXY:  " + Mousemanager.x + ", " + Mousemanager.y, virtualResolutionDebugX, virtualResolutionDebugY+1*12)
+			DrawText(" MouseXY:  " + MouseX() + ", " + MouseY(), virtualResolutionDebugX, virtualResolutionDebugY+2*12)
+			DrawText(" GM.DesignedMouseXY: " + TFunctions.LocalizedNumberToString(GetGraphicsManager().DesignedMouseX(), 2) + ", " + TFunctions.LocalizedNumberToString(GetGraphicsManager().DesignedMouseY(), 2), virtualResolutionDebugX, virtualResolutionDebugY+4*12)
+			DrawText(" GM.WindowMouseXY: " + GetGraphicsManager().WindowMouseX() + ", " + GetGraphicsManager().WindowMouseY(), virtualResolutionDebugX, virtualResolutionDebugY+5*12)
+			
+			DrawText(" GM.windowSize: " + GetGraphicsManager().windowSize.x + ", " + GetGraphicsManager().windowSize.y, virtualResolutionDebugX, virtualResolutionDebugY+7*12)
+			DrawText(" GM.canvasSize: " + GetGraphicsManager().canvasSize.x + ", " + GetGraphicsManager().canvasSize.y + " (Pos: " + GetGraphicsManager().canvasPos.x+", "+GetGraphicsManager().canvasPos.y+")", virtualResolutionDebugX, virtualResolutionDebugY+8*12)
+			DrawText(" GM.designedSize: " + GetGraphicsManager().designedSize.x + ", " + GetGraphicsManager().designedSize.y, virtualResolutionDebugX, virtualResolutionDebugY+9*12)
+			DrawText(" virtResViewport: " + currentVirtualResolutionVP.x+", "+currentVirtualResolutionVP.y+", "+currentVirtualResolutionVP.w+", "+currentVirtualResolutionVP.h, virtualResolutionDebugX, virtualResolutionDebugY+11*12)
+		EndIf
+		'----
+
+		' restore virtual resolution stuff / letterbox
+		GetGraphicsManager().EnableVirtualResolution(currentVirtualResolutionVP)
 
 
 		'if a screenshot is generated, draw a logo in
@@ -1710,69 +2027,69 @@ End Type
 'just an object holding all data which has to get saved
 'it is kind of an "DataCollectionCollection" ;D
 Type TGameState
-	Field _gameSummary:TData = Null
-	Field _Game:TGame = Null
-	Field _BuildingTime:TBuildingTime = Null
-	Field _WorldTime:TWorldTime = Null
-	Field _WorldWeather:TWorldWeather = Null
-	Field _GameRules:TGamerules = Null
-	Field _GameConfig:TGameConfig = Null
-	Field _Betty:TBetty = Null
-	Field _AwardCollection:TAwardCollection = Null
-	Field _NewsEventSportCollection:TNewsEventSportCollection = Null
+	Field _gameSummary:TData = Null                                     {progress =  0}
+	Field _Game:TGame = Null                                            {progress =  1}
+	Field _BuildingTime:TBuildingTime = Null                            {progress =  1}
+	Field _WorldTime:TWorldTime = Null                                  {progress =  1}
+	Field _WorldWeather:TWorldWeather = Null                            {progress =  1}
+	Field _GameRules:TGamerules = Null                                  {progress =  1}
+	Field _GameConfig:TGameConfig = Null                                {progress =  2}
+	Field _Betty:TBetty = Null                                          {progress =  2}
+	Field _AwardCollection:TAwardCollection = Null                      {progress =  2}
+	Field _NewsEventSportCollection:TNewsEventSportCollection = Null    {progress =  2}
 	
-	Field _GameModifierManager:TGameModifierManager = Null
-	Field _GameInformationCollection:TGameInformationCollection = Null
-	Field _IngameHelpWindowCollection:TIngameHelpWindowCollection = Null
-	Field _DatabaseLocalizer:TDatabaseLocalizer = Null
+	Field _GameModifierManager:TGameModifierManager = Null                  {progress = 3}
+	Field _GameInformationCollection:TGameInformationCollection = Null      {progress = 3}
+	Field _IngameHelpWindowCollection:TIngameHelpWindowCollection = Null    {progress = 6}
+	Field _DatabaseLocalizer:TDatabaseLocalizer = Null                      {progress = 6}
 
-	Field _AudienceManager:TAudienceManager = Null
-	Field _AdContractBaseCollection:TAdContractBaseCollection = Null
-	Field _AdContractCollection:TAdContractCollection = Null
+	Field _AudienceManager:TAudienceManager = Null                          {progress = 7}
+	Field _AdContractBaseCollection:TAdContractBaseCollection = Null        {progress = 10}
+	Field _AdContractCollection:TAdContractCollection = Null                {progress = 13}
 
-	Field _ScriptTemplateCollection:TScriptTemplateCollection = Null
-	Field _ScriptCollection:TScriptCollection = Null
-	Field _ProductionManager:TProductionManager = Null
-	Field _ProductionConceptCollection:TProductionConceptCollection = Null
-	Field _ProductionCompanyBaseCollection:TProductionCompanyBaseCollection = Null
-	Field _ProgrammeRoleCollection:TProgrammeRoleCollection = Null
-	Field _ProgrammePersonBaseCollection:TPersonBaseCollection = Null
-	Field _ProgrammeDataCollection:TProgrammeDataCollection = Null
-	Field _ProgrammeLicenceCollection:TProgrammeLicenceCollection = Null
-	Field _ProgrammeProducerCollection:TProgrammeProducerCollection = Null
+	Field _ScriptTemplateCollection:TScriptTemplateCollection = Null               {progress = 16}
+	Field _ScriptCollection:TScriptCollection = Null                               {progress = 20}
+	Field _ProductionManager:TProductionManager = Null                             {progress = 24}
+	Field _ProductionConceptCollection:TProductionConceptCollection = Null         {progress = 25}
+	Field _ProductionCompanyBaseCollection:TProductionCompanyBaseCollection = Null {progress = 26}
+	Field _ProgrammeRoleCollection:TProgrammeRoleCollection = Null                 {progress = 27}
+	Field _ProgrammePersonBaseCollection:TPersonBaseCollection = Null              {progress = 30}
+	Field _ProgrammeDataCollection:TProgrammeDataCollection = Null                 {progress = 35}
+	Field _ProgrammeLicenceCollection:TProgrammeLicenceCollection = Null           {progress = 40}
+	Field _ProgrammeProducerCollection:TProgrammeProducerCollection = Null         {progress = 48}
 
-	Field _NewsEventTemplateCollection:TNewsEventTemplateCollection = Null
-	Field _NewsEventCollection:TNewsEventCollection = Null
-	Field _AchievementCollection:TAchievementCollection = Null
-	Field _ArchivedMessageCollection:TArchivedMessageCollection = Null
-	Field _FigureCollection:TFigureCollection = Null
-	Field _PlayerCollection:TPlayerCollection = Null
-	Field _PlayerFinanceCollection:TPlayerFinanceCollection = Null
-	Field _PlayerFinanceHistoryListCollection:TPlayerFinanceHistoryListCollection = Null
-	Field _PlayerProgrammePlanCollection:TPlayerProgrammePlanCollection = Null
-	Field _PlayerProgrammeCollectionCollection:TPlayerProgrammeCollectionCollection = Null
-	Field _PlayerBossCollection:TPlayerBossCollection = Null
-	Field _PlayerDifficultyCollection:TPlayerDifficultyCollection = Null
-	Field _PublicImageCollection:TPublicImageCollection = Null
-	Field _PressureGroupCollection:TPressureGroupCollection = Null
-	Field _EventManagerEvents:TList = Null
-	Field _PopularityManager:TPopularityManager = Null
-	Field _BroadcastManager:TBroadcastManager = Null
-	Field _DailyBroadcastStatisticCollection:TDailyBroadcastStatisticCollection = Null
-	Field _StationMapCollection:TStationMapCollection = Null
-	Field _Elevator:TElevator
-	Field _Building:TBuilding 'includes, sky, moon, ufo
-	Field _RoomBoard:TRoomBoard 'signs
-	Field _NewsAgency:TNewsAgency
-	Field _RoomAgency:TRoomAgency
-	Field _AuctionProgrammeBlocksList:TList
-	Field _RoomHandler_Studio:RoomHandler_Studio
-	Field _RoomHandler_MovieAgency:RoomHandler_MovieAgency
-	Field _RoomHandler_AdAgency:RoomHandler_AdAgency
-	Field _RoomHandler_ScriptAgency:RoomHandler_ScriptAgency
-	Field _RoomHandler_News:RoomHandler_News
-	Field _RoomDoorBaseCollection:TRoomDoorBaseCollection
-	Field _RoomBaseCollection:TRoomBaseCollection
+	Field _NewsEventTemplateCollection:TNewsEventTemplateCollection = Null         {progress = 50}
+	Field _NewsEventCollection:TNewsEventCollection = Null                         {progress = 55}
+	Field _AchievementCollection:TAchievementCollection = Null                     {progress = 60}
+	Field _ArchivedMessageCollection:TArchivedMessageCollection = Null             {progress = 61}
+	Field _FigureCollection:TFigureCollection = Null                               {progress = 63}
+	Field _PlayerCollection:TPlayerCollection = Null                               {progress = 65}
+	Field _PlayerFinanceCollection:TPlayerFinanceCollection = Null                            {progress = 67}
+	Field _PlayerFinanceHistoryListCollection:TPlayerFinanceHistoryListCollection = Null      {progress = 70}
+	Field _PlayerProgrammePlanCollection:TPlayerProgrammePlanCollection = Null                {progress = 73}
+	Field _PlayerProgrammeCollectionCollection:TPlayerProgrammeCollectionCollection = Null    {progress = 76}
+	Field _PlayerBossCollection:TPlayerBossCollection = Null                                  {progress = 79}
+	Field _PlayerDifficultyCollection:TPlayerDifficultyCollection = Null           {progress = 79}
+	Field _PublicImageCollection:TPublicImageCollection = Null                     {progress = 80}
+	Field _PressureGroupCollection:TPressureGroupCollection = Null                 {progress = 82}
+	Field _EventManagerEvents:TList = Null                                         {progress = 83}
+	Field _PopularityManager:TPopularityManager = Null                             {progress = 85}
+	Field _BroadcastManager:TBroadcastManager = Null                                    {progress = 88}
+	Field _DailyBroadcastStatisticCollection:TDailyBroadcastStatisticCollection = Null  {progress = 89}
+	Field _StationMapCollection:TStationMapCollection = Null                            {progress = 91}
+	Field _Elevator:TElevator                                           {progress = 93}
+	Field _Building:TBuilding                                           {progress = 94} 'includes, sky, moon, ufo
+	Field _RoomBoard:TRoomBoard                                         {progress = 94} 'signs
+	Field _NewsAgency:TNewsAgency                                       {progress = 95}
+	Field _RoomAgency:TRoomAgency                                       {progress = 95}
+	Field _AuctionProgrammeBlocksList:TList                             {progress = 96}
+	Field _RoomHandler_Studio:RoomHandler_Studio                        {progress = 96}
+	Field _RoomHandler_MovieAgency:RoomHandler_MovieAgency              {progress = 97}
+	Field _RoomHandler_AdAgency:RoomHandler_AdAgency                    {progress = 97}
+	Field _RoomHandler_ScriptAgency:RoomHandler_ScriptAgency            {progress = 98}
+	Field _RoomHandler_News:RoomHandler_News                            {progress = 98}
+	Field _RoomDoorBaseCollection:TRoomDoorBaseCollection               {progress = 99}
+	Field _RoomBaseCollection:TRoomBaseCollection                       {progress = 99}
 	Field _PlayerColorList:TObjectList
 	Field _CurrentScreenName:String
 	Field _adAgencySortMode:Int
@@ -1787,7 +2104,7 @@ Type TGameState
 	Field _interface_ShowChannel:Int = 0
 	Field _interface_ChatWindowMode:Int = 1
 	Field _interface_ChatShowHideLocked:Int = 0
-	Field _aiBase_AiRunning:Int = False
+	Field _aiBase_AiRunning:Int = False                                 {progress = 100}
 	Const MODE_LOAD:Int = 0
 	Const MODE_SAVE:Int = 1
 
@@ -2116,7 +2433,6 @@ Type TSaveGame Extends TGameState
 	Const SAVEGAME_VERSION:int = 24
 	Const MIN_SAVEGAME_VERSION:Int = 23
 	Global messageWindow:TGUIModalWindow
-	Global messageWindowBackground:TImage
 	Global messageWindowLastUpdate:Long
 	Global messageWindowUpdatesSkipped:Int = 0
 	Global lastSaveTime:Long = 0 {nosave}
@@ -2124,6 +2440,11 @@ Type TSaveGame Extends TGameState
 
 	Global toSaveNow:Int = False {nosave}
 	Global toSaveUri:String {nosave}
+	
+	Global progressLog:String[] {nosave}
+	Global progressLogState:String[] {nosave}
+	Global progressLogMaxLines:Int = 7 {nosave}
+	Global progress:Int = 0 {nosave}
 
 	'override to do nothing
 	Method Initialize:Int()
@@ -2202,67 +2523,39 @@ Type TSaveGame Extends TGameState
 		'check if all data is available
 		Return True
 	End Method
+	
+	
+	Function AddToProgressLog(value:String)
+		If value
+			progressLog :+ [value]
+			progressLogState :+ [""]
 
-
-	Function UpdateMessage:Int(Load:Int=False, text:String="", progress:Float=0.0, forceUpdate:Int=False)
-		'skip update if called too often (as it is still FPS limited ... !)
-		If Not forceUpdate And Time.GetAppTimeGone() - messageWindowLastUpdate < 25 And messageWindowUpdatesSkipped < 5
-			messageWindowUpdatesSkipped :+ 1
-			Return False
-		Else
-			messageWindowUpdatesSkipped = 0
-			messageWindowLastUpdate = Time.GetAppTimeGone()
+			'cut log and only keep last x
+			If progressLog.length > progressLogMaxLines
+				progressLog = progressLog[progressLog.length - progressLogMaxLines ..]
+				progressLogState = progressLogState[progressLogState.length - progressLogMaxLines ..]
+			EndIf 
 		EndIf
-
-		If Not messageWindowBackground
-			messageWindowBackground = LoadImage(VirtualGrabPixmap(0, 0, GetGraphicsManager().GetWidth(), GetGraphicsManager().GetHeight() ))
-		EndIf
-
-		SetClsColor 0,0,0
-		'use graphicsmanager's cls as it resets virtual resolution first
-		GetGraphicsManager().Cls()
-		
-		'before drawing the full screen (which is 100% of the "real" 
-		'window dimension) we need to disable the virtual graphics area
-		'to disable any resizing
-		GetGraphicsManager().ResetVirtualGraphicsArea()
-		DrawImage(messageWindowBackground, 0,0)
-		GetGraphicsManager().SetupVirtualGraphicsArea()
-
-		If Load = 1
-			messageWindow.SetCaptionAndValue(GetLocale("PLEASE_BE_PATIENT"), GetLocale("SAVEGAME_GETS_LOADED") + "~n" + text)
-		ElseIf Load = 0
-			messageWindow.SetCaptionAndValue(GetLocale("PLEASE_BE_PATIENT"), GetLocale("SAVEGAME_GETS_CREATED") + "~n" + text )
-		Else
-			messageWindow.SetCaptionAndValue(GetLocale("PLEASE_BE_PATIENT"), text )
-		EndIf
-
-		messageWindow.Update()
-		messageWindow.Draw()
-
-		Flip 0
 	End Function
-
-
-	Function ShowMessage:Int(Load:Int=False, text:String="", progress:Float=0.0)
-		'grab a fresh copy
-		messageWindowBackground = LoadImage(VirtualGrabPixmap(0, 0, GetGraphicsManager().GetWidth(), GetGraphicsManager().GetHeight() ))
-
+	
+	
+	Function ShowProgressWindow:Int(Load:Int=False)
 		If messageWindow Then messageWindow.Remove()
+		
+		'reset logs
+		progressLog = progressLog[.. 0]
+		progressLogState = progressLogState[.. 0]
+		progress = 0
 
 		'create a new one
-		messageWindow = New TGUIGameModalWindow.Create(New SVec2I(0,0), New SVec2I(400, 200), "SYSTEM")
+		messageWindow = New TGUIGameModalWindow.Create(New SVec2I(0,0), New SVec2I(450, 250), "SYSTEM")
 		messageWindow.guiCaptionTextBox.SetFont(headerFont)
 		messageWindow._defaultValueColor = TColor.clBlack.copy()
 		messageWindow.defaultCaptionColor = TColor.clWhite.copy()
 		messageWindow.SetCaptionArea(New TRectangle.Init(-1, 6, -1, 30))
 		messageWindow.guiCaptionTextBox.SetValueAlignment( ALIGN_CENTER_TOP )
-		'no buttons
+		'no buttons (use space for progress bar)
 		messageWindow.SetDialogueType(0)
-		'use a non-button-background
-		messageWindow.guiBackground.spriteBaseName = "gfx_gui_window"
-
-
 
 		If GetGame().gamestate = TGame.STATE_RUNNING
 			messageWindow.darkenedArea = New TRectangle.Init(0,0,800,385)
@@ -2272,16 +2565,116 @@ Type TSaveGame Extends TGameState
 			messageWindow.screenArea = Null
 		EndIf
 
-		If Load
-			messageWindow.SetCaptionAndValue(GetLocale("PLEASE_BE_PATIENT"), getLocale("SAVEGAME_GETS_LOADED") + "~n" + text)
-		Else
-			messageWindow.SetCaptionAndValue(GetLocale("PLEASE_BE_PATIENT"), getLocale("SAVEGAME_GETS_CREATED") + "~n" + text )
+		messageWindow.Open()
+		
+		'render it out
+		UpdateProgressWindow(Load, "", 0, True)
+	End Function
+
+
+	Function CloseProgressWindow()
+		messageWindow.SetValue("Done.")
+		'close message window
+		If messageWindow Then messageWindow.Close()
+	End Function
+
+
+	Function UpdateProgressWindow:Int(Load:Int=False, addToLog:String="", newProgressValue:Int = -1000, forceUpdate:Int=False)
+		If addToLog
+			'mark previous as OK
+			if progressLogState.length > 0
+				progressLogState[progressLog.length - 1] = "OK"
+			EndIf
+
+			Local message:String = StringHelper.MidTruncString(addToLog, 45)
+			AddToProgressLog(message)
+		EndIf
+		
+		'set progress if provided
+		If newProgressValue <> -1000
+			progress = newProgressValue
 		EndIf
 
-		messageWindow.Open()
+
+		'=== RENDER / OUTPUT ===
+		
+		'skip update if called too often (as it is still FPS limited ... !)
+		If Not forceUpdate And Time.GetAppTimeGone() - messageWindowLastUpdate < 25 And messageWindowUpdatesSkipped < 5
+			messageWindowUpdatesSkipped :+ 1
+			Return False
+		Else
+			messageWindowUpdatesSkipped = 0
+			messageWindowLastUpdate = Time.GetAppTimeGone()
+		EndIf
+
+
+		GetGraphicsManager().UpdateWindowSize()
+		' something borks up an internal setting - just scaling ONE window
+		' dimension (so only width OR height) would slide the viewport
+		' over the image. This get+set of the virtual resolution fixes
+		' the issue (for now).
+		Local vpBackup:SRectI = GetGraphicsManager().DisableVirtualResolution()
+		GetGraphicsManager().EnableVirtualResolution(vpBackup)
+		If mainRenderImage
+			DrawImage(mainRenderImage, 0, 0)
+		Else
+			Cls()
+		EndIf
+
+		If Load = 1
+			messageWindow.SetCaptionAndValue(GetLocale("SAVEGAME_GETS_LOADED"), "")
+		Else
+			messageWindow.SetCaptionAndValue(GetLocale("SAVEGAME_GETS_CREATED"), "" )
+		EndIf
 
 		messageWindow.Update()
 		messageWindow.Draw()
+
+
+		'rect of the message window's content area
+		Local messageRect:TRectangle = messageWindow.GetContentScreenRect()
+		Local oldAlpha:Float = GetAlpha()
+		SetAlpha messageWindow.GetScreenAlpha()
+		Local messageDY:Int = 0
+		messageDY :+ GetBitmapFontManager().baseFont.DrawSimple(GetLocale("PLEASE_BE_PATIENT") + "~n", messageRect.GetX(), messageRect.GetY() + messageDY, SColor8.Black).y
+		
+	
+		If progressLog.length > 0
+			For local i:Int = 0 until progressLog.length
+				If progressLogState[i] = ""
+					If Load = 1
+						GetBitmapFontManager().baseFont.DrawBox("Loading", messageRect.GetX(), messageRect.GetY() + messageDY, messageRect.GetW(), messageRect.GetH(), sALIGN_RIGHT_TOP, new SColor8(0,0,0, 150))
+					Else
+						GetBitmapFontManager().baseFont.DrawBox("Saving", messageRect.GetX(), messageRect.GetY() + messageDY, messageRect.GetW(), messageRect.GetH(), sALIGN_RIGHT_TOP, new SColor8(0,0,0, 150))
+					EndIf
+				Else
+					GetBitmapFontManager().baseFont.DrawBox(progressLogState[i], messageRect.GetX(), messageRect.GetY() + messageDY, messageRect.GetW(), messageRect.GetH(), sALIGN_RIGHT_TOP, new SColor8(0,0,0, 150))
+				EndIf
+
+				messageDY :+ GetBitmapFontManager().baseFont.DrawBox(progressLog[i], messageRect.GetX(), messageRect.GetY() + messageDY, messageRect.GetW(), messageRect.GetH(), sALIGN_LEFT_TOP, SColor8.Black).y
+				'avoid drawing too much
+				if messageDY + 20 > messageRect.GetH() Then Exit
+			Next
+		EndIf
+		
+		'progress bar
+		Local barX:Int = Int(messageRect.GetX())
+		Local barY:Int = Int(messageRect.GetY() + messageRect.GetH() + 20)
+		Local oldColor:SColor8; GetColor(oldColor)
+		Local outlineColor:SColor8 = New SColor8(120, 120, 150, Byte(0.5*255))
+		Local bgFillColor:SColor8 = New SColor8(120, 130, 180, Byte(0.2*255))
+		Local fillColor:SColor8 = New SColor8(120, 130, 180, Byte(0.9*255))
+		Local percentageTextColor:SColor8 = New SColor8(0, 0, 0, Byte(0.5*255))
+		
+		Local totalProgress:Float = progress
+		'total progress
+		TFunctions.DrawOutlineRect(barX, barY, Int(messageRect.GetW()), 14, outlineColor, bgFillColor)
+		SetColor(fillColor)
+		DrawRect(barX + 1, barY + 1, Int((messageRect.GetW() - 2) * totalProgress/100.0), 14 - 2)
+		SetColor(oldColor)
+		GetBitmapFontManager().baseFont.DrawBox(Int(totalProgress) + " %", barX, barY - 3, messageRect.GetW(), 20, sALIGN_CENTER_CENTER, percentageTextColor)
+			
+		SetAlpha oldAlpha
 
 		Flip 0
 	End Function
@@ -2906,6 +3299,29 @@ Rem
 	End Function
 
 
+	Function OnPersistLoadProgressCallback:Int(progress:String, userData:Object)
+		OnPersistProgress(True, String(userData), Int(progress))
+	End Function
+
+
+	Function OnPersistSaveProgressCallback:Int(progress:String, userData:Object)
+		OnPersistProgress(False, String(userData), Int(progress))
+	End Function
+	
+
+	Function OnPersistProgress:Int(load:Int = True, value:String, progress:Int)
+		'TODO: we could localize / extend the text information depending on the "keys" here
+		'-> _programmeDataCollection => "Programme collection" etc
+		'
+		'alternatively a second MetaTag could provide a label-key or label (not localized)
+		
+		local niceValue:String = value
+		If niceValue and niceValue[0] = Asc("_") Then niceValue = niceValue[1..]
+
+		UpdateProgressWindow(load, niceValue, progress, True)
+	End Function
+
+
 	'internal/private function
 	Function _LoadURI:Int(saveURI:String="savegame.xml", skipCompatibilityCheck:Int = False)
 		'stop ai of previous game if some was running
@@ -2913,7 +3329,7 @@ Rem
 			If GetPlayer(i) Then GetPlayer(i).StopAI()
 		Next
 
-		ShowMessage(True)
+		ShowProgressWindow(True)
 
 		Local savegameSummary:TData = GetGameSummary(saveURI)
 		if not savegameSummary then savegameSummary = new TData
@@ -2926,13 +3342,13 @@ Rem
 		If fileState < 0
 			if fileState = -1
 				TLogger.Log("Savegame.Load()", GetLocale("FILE_NOT_FOUND") + ": ~q"+saveURI+"~q.", LOG_SAVELOAD | LOG_ERROR)
-				UpdateMessage(2, "|b|ERROR:|/b|~n" + GetLocale("FILE_NOT_FOUND") + ": ~q"+saveURI+"~q.", 0, True)
+				UpdateProgressWindow(2, "|b|ERROR:|/b|~n" + GetLocale("FILE_NOT_FOUND") + ": ~q"+saveURI+"~q.", 0, True)
 			elseif fileState = -2
 				TLogger.Log("Savegame.Load()", GetLocale("INVALID_SAVEGAME") + ": ~q"+saveURI+"~q.", LOG_SAVELOAD | LOG_ERROR)
-				UpdateMessage(2, "|b|ERROR:|/b|~n" + GetLocale("INVALID_SAVEGAME") + ": ~q"+saveURI+"~q.", 0, True)
+				UpdateProgressWindow(2, "|b|ERROR:|/b|~n" + GetLocale("INVALID_SAVEGAME") + ": ~q"+saveURI+"~q.", 0, True)
 			elseif fileState = -3
 				TLogger.Log("Savegame.Load()", GetLocale("INCOMPATIBLE_SAVEGAME") + ": ~q"+saveURI+"~q.", LOG_SAVELOAD | LOG_ERROR)
-				UpdateMessage(2, "|b|ERROR:|/b|~n" + GetLocale("INCOMPATIBLE_SAVEGAME") + ": ~q"+saveURI+"~q.", 0, True)
+				UpdateProgressWindow(2, "|b|ERROR:|/b|~n" + GetLocale("INCOMPATIBLE_SAVEGAME") + ": ~q"+saveURI+"~q.", 0, True)
 			endif
 			'wait a second
 			Delay(2500)
@@ -2944,11 +3360,10 @@ Rem
 		
 		Local savegameConverter:TSavegameConverter
 
-		TPersist.maxDepth = 4096*4
 		Local persist:TPersist = New TXMLPersistenceBuilder.Build()
 		'Local persist:TPersist = New TPersist
 		persist.serializer = New TSavegameSerializer
-
+		
 		'reset entity ID
 		'this avoids duplicate GUIDs
 		TEntityBase.lastID = savegameSummary.GetInt("entitybase_lastID", 3000000)
@@ -2976,6 +3391,8 @@ Rem
 		EndIf
 
 		Local loadingStart:Int = MilliSecs()
+
+		persist.progressCallback = OnPersistLoadProgressCallback
 
 		'savegame deserialization creates new TGameObjects - and thus
 		'increases the ID count!
@@ -3087,8 +3504,8 @@ endrem
 
 		RepairData(loadedSaveGameVersion, savegameConverter)
 
-		'close message window
-		If messageWindow Then messageWindow.Close()
+
+		CloseProgressWindow()
 
 		'reduce game speed for autosave games (saved during fast forward)
 		If saveURI.contains("autosave.") and GetWorldTime().GetTimeFactor() > 200
@@ -3105,7 +3522,7 @@ endrem
 		
 
 	Function _SaveURI:Int(saveURI:String="savegame.xml")
-		ShowMessage(False)
+		ShowProgressWindow(False)
 		
 		'check if variants of the savegame filename exist - and delete them!
 		Local fileURI1:String = StripExt(saveURI) + "." + GameConfig.uncompressedSavegameExtension
@@ -3116,18 +3533,8 @@ endrem
 
 		'check directories and create them if needed
 		Local dirs:String[] = ExtractDir(saveURI.Replace("\", "/")).Split("/")
-		Local currDir:String
-		For Local dir:String = EachIn dirs
-			If currDir Then currDir :+ "/"
-			currDir :+ dir
-			'if directory does not exist, create it
-			If FileType(currDir) <> 2
-				TLogger.Log("Savegame.Save()", "Savegame path contains missing directories. Creating ~q"+currDir[.. currDir.length-1]+"~q.", LOG_SAVELOAD)
-				CreateDir(currDir)
-			EndIf
-		Next
-		If FileType(currDir) <> 2
-			TLogger.Log("Savegame.Save()", "Failed to create directory ~q" + currDir + "~q for ~q"+saveURI+"~q.", LOG_SAVELOAD)
+		If TFileHelper.EnsureWriteableDirectoryExists(ExtractDir(saveURI))
+			TLogger.Log("Savegame.Save()", "Savegame path contained missing directories. Created ~q"+ExtractDir(saveURI)+"~q.", LOG_SAVELOAD)
 		EndIf
 
 		Local t:Int = MilliSecs()
@@ -3137,9 +3544,8 @@ endrem
 		Local event:TEventBase = TEventBase.Create(GameEventKeys.SaveGame_OnBeginSave, New TData.addString("saveName", saveURI))
 		event.Trigger()
 		if event.IsVeto()
-'			saveGame.UpdateMessage(False, "Saving: Saving aborted (timeout?).")
-			'close message window
-			If messageWindow Then messageWindow.Close()
+			CloseProgressWindow()
+
 			Local reason:String = event.GetData().GetString("vetoReason")
 			if reason then reason = "|b|Reason:|/b| " + reason +"~n"
 			TError.Create("Failed to save game", reason + "|i|Might help to wait a moment and then try again.|/i|", False)
@@ -3163,12 +3569,11 @@ endrem
 		'a bit processing time (formatting) and on whitespace
 		If GameConfig.compressSavegames Then TPersist.format = False
 
-		?debug
-		saveGame.UpdateMessage(False, "Saving: Serializing data to savegame file.")
-		?
-		TPersist.maxDepth = 4096
+		saveGame.UpdateProgressWindow(False, "Serializing data to savegame file.", 0)
+
 		Local p:TPersist = New TXMLPersistenceBuilder.Build()
 		p.serializer = New TSavegameSerializer
+		p.progressCallback = OnPersistSaveProgressCallback
 
 		If GameConfig.compressSavegames
 			'compress the TStream of XML-Data into an archive and save it
@@ -3206,7 +3611,7 @@ endrem
 		TLogger.Log("Savegame.SaveURI()", "Savegame file ~q"+saveURI+"~q saved in " + (MilliSecs() - t)+"ms.", LOG_SAVELOAD | LOG_DEBUG)
 
 		'close message window
-		If messageWindow Then messageWindow.Close()
+		CloseProgressWindow()
 
 		TSaveGame.lastSaveTime = GetWorldTime().GetTimeGone()
 		Return True
@@ -3355,6 +3760,16 @@ Type TSavegameConverter
 		sb.Append(fieldTypeName)
 		Local handle:String = sb.ToLower().ToString()
 		Select handle
+			'v0.8.4: TFigureTarget.startCondition and .figureState -> TFigureTarget.flags
+			case "TFigureTarget.startCondition:Int".ToLower(), ..
+			     "TFigureTargetBase.startCondition:Int".ToLower()
+				Local target:TFigureTargetBase = TFigureTargetBase(parent)
+				target.SetFlag(TVTFigureTargetFlag.MUST_BE_IN_BUILDING_TO_START, fieldObject.ToString().ToInt() = 1)
+			case "TFigureTarget.figureState:Int".ToLower(), ..
+			     "TFigureTargetBase.figureState:Int".ToLower()
+				Local target:TFigureTargetBase = TFigureTargetBase(parent)
+				target.SetFlag(TVTFigureTargetFlag.SET_FIGURE_UNCONTROLLABLE, fieldObject.ToString().ToInt() = 1)
+				
 			'v0.8.3: TNewsEventSportCollection.matches:TMap -> TNewsEventSportCollection.matchesByID:TIntMap
 			case "TNewsEventSportCollection.matches:TMap".ToLower()
 				Local map:TMap = TMap(fieldObject)
@@ -3980,6 +4395,14 @@ Type TScreen_PrepareGameStart Extends TGameScreen
 	Field SendGameReadyTimer:Long = 0
 	Field StartMultiplayerSyncStarted:Long = 0
 	Field messageWindow:TGUIGameModalWindow
+	Field actionLogMaxLines:Int = 7
+	Field actionLog:String[]
+	Field actionLogState:String[]
+	Field prepareProgress:Float = 0
+	Field prepareStepSize:Int = 0 'how much will a step move forward after finish
+	Field prepareStep:Int = 0
+	Field dbFilesLoadedInStep:Int = 0
+	Field dbFilesToLoadInStep:Int = 0
 
 	'Store call states as we try a "Non blocking" approach
 	'which means, the update loop gets called multiple time.
@@ -4001,6 +4424,15 @@ Type TScreen_PrepareGameStart Extends TGameScreen
 
 	Field stateName:TLowerString
 
+	Global _registeredListeners:TEventListenerBase[] {nosave}
+	Global _registeredEvents:Int = False
+
+	
+	Method New()
+		RegisterEvents()	
+	End Method
+
+
 	Method Create:TScreen_PrepareGameStart(name:String)
 		Super.Create(name)
 		SetGroupName("ExGame", "PrepareGameStart")
@@ -4014,6 +4446,105 @@ Type TScreen_PrepareGameStart Extends TGameScreen
 
 		Return Self
 	End Method
+
+
+
+	Method RegisterEvents:Int()
+		EventManager.UnregisterListenersArray(_registeredListeners)
+		_registeredListeners = New TEventListenerBase[0]
+
+		if not _registeredEvents
+			_registeredListeners :+ [ EventManager.registerListenerFunction(GameEventKeys.Game_OnPrepareNewGameStep, OnPrepareNewGameStep) ]
+			_registeredListeners :+ [ EventManager.registerListenerFunction(GameEventKeys.Database_OnLoadFiles, OnDatabaseLoadFiles) ]
+			_registeredListeners :+ [ EventManager.registerListenerFunction(GameEventKeys.Database_OnLoad, OnDatabaseLoad) ]
+			_registeredListeners :+ [ EventManager.registerListenerFunction(GameEventKeys.Database_OnBeginLoad, OnDatabaseBeginLoad) ]
+
+			_registeredEvents = True
+		endif
+	End Method
+	
+	Function OnDatabaseBeginLoad:int( triggerEvent:TEventBase )
+		If not TScreen_PrepareGameStart(ScreenCollection.currentScreen) Then Return	False
+		If GetGame().gameState <> TGame.STATE_PREPAREGAMESTART Then Return False
+
+		Local screen:TScreen_PrepareGameStart = TScreen_PrepareGameStart(ScreenCollection.currentScreen)
+		Local fileURI:String = triggerEvent.GetData().GetString("fileURI")
+		Local message:String = "DB: " + StringHelper.MidTruncString(fileURI, 45)
+
+		screen.actionLog :+ [message]
+		screen.actionLogState :+ ["Loading"]
+		If screen.actionLog.length > screen.actionLogMaxLines
+			screen.actionLog = screen.actionLog[screen.actionLog.length - screen.actionLogMaxLines ..]
+			screen.actionLogState = screen.actionLogState[screen.actionLogState.length - screen.actionLogMaxLines ..]
+		EndIf 
+
+		'enforce redrawing the screen
+		'ScreenCollection.DrawCurrent(GetDeltaTimer().GetTween())
+		screen.Draw(GetDeltaTimer().GetTween())
+		Flip
+	End Function
+	
+
+	Function OnPrepareNewGameStep:int( triggerEvent:TEventBase )
+		If not TScreen_PrepareGameStart(ScreenCollection.currentScreen) Then Return	False
+		If GetGame().gameState <> TGame.STATE_PREPAREGAMESTART Then Return False
+		Local screen:TScreen_PrepareGameStart = TScreen_PrepareGameStart(ScreenCollection.currentScreen)
+
+		screen.prepareProgress = triggerEvent.GetData().GetInt("percentage")
+		screen.prepareStep = triggerEvent.GetData().GetInt("step")
+		screen.prepareStepSize = triggerEvent.GetData().GetInt("percentageStepSize")
+
+		'enforce redrawing the screen
+		'ScreenCollection.DrawCurrent(GetDeltaTimer().GetTween())
+		screen.Draw(GetDeltaTimer().GetTween())
+		Flip
+	End Function
+
+
+	Function OnDatabaseLoadFiles:int( triggerEvent:TEventBase )
+		If not TScreen_PrepareGameStart(ScreenCollection.currentScreen) Then Return	False
+		If GetGame().gameState <> TGame.STATE_PREPAREGAMESTART Then Return False
+
+		Local screen:TScreen_PrepareGameStart = TScreen_PrepareGameStart(ScreenCollection.currentScreen)
+		Local files:String[] = String[](triggerEvent.GetData().Get("files"))
+		screen.dbFilesToLoadInStep = files.length
+		screen.dbFilesLoadedInStep = 0
+	End Function
+
+	
+	Function OnDatabaseLoad:int( triggerEvent:TEventBase )
+		If not TScreen_PrepareGameStart(ScreenCollection.currentScreen) Then Return	False
+		If GetGame().gameState <> TGame.STATE_PREPAREGAMESTART Then Return False
+
+		Local screen:TScreen_PrepareGameStart = TScreen_PrepareGameStart(ScreenCollection.currentScreen)
+		Local fileURI:String = triggerEvent.GetData().GetString("fileURI")
+
+		'replace exiting "Loading" if still in there
+		Local message:String = "DB: " + StringHelper.MidTruncString(fileURI, 45)
+		Local updatedState:Int
+		For local i:Int = 0 until screen.actionLog.length
+			If screen.actionLog[i] = message
+				screen.actionLogState[i] = "OK"
+				updatedState = True
+				exit
+			EndIf
+		Next
+		If not updatedState
+			screen.actionLog :+ [message]
+			screen.actionLogState :+ ["OK"]
+		EndIf
+		
+		If screen.actionLog.length > screen.actionLogMaxLines
+			screen.actionLog = screen.actionLog[screen.actionLog.length - screen.actionLogMaxLines ..]
+			screen.actionLogState = screen.actionLogState[screen.actionLogState.length - screen.actionLogMaxLines ..]
+		EndIf
+		screen.prepareProgress :+ screen.prepareStepSize * (1.0 / screen.dbFilesToLoadInStep)
+
+		'enforce redrawing the screen
+		'ScreenCollection.DrawCurrent(GetDeltaTimer().GetTween())
+		screen.Draw(GetDeltaTimer().GetTween())
+		Flip
+	End Function
 
 
 	Method Draw:Int(tweenValue:Float)
@@ -4040,7 +4571,30 @@ Type TScreen_PrepareGameStart Extends TGameScreen
 			Next
 			If Not allReady Then GetBitmapFontManager().baseFont.DrawSimple("not ready!!", messageRect.GetX(), messageRect.GetY() + messageDY, SColor8.Black)
 		Else
-			GetBitmapFontManager().baseFont.DrawSimple(GetLocale("PREPARING_START_DATA")+"...", messageRect.GetX(), messageRect.GetY() + messageDY, SColor8.Black)
+			messageDY :+ GetBitmapFontManager().baseFont.DrawSimple(GetLocale("PREPARING_START_DATA")+ "...", messageRect.GetX(), messageRect.GetY() + messageDY, SColor8.Black).y
+			If actionLog.length > 0
+				For local i:Int = 0 until actionLog.length
+					GetBitmapFontManager().baseFont.DrawBox(actionLogState[i], messageRect.GetX(), messageRect.GetY() + messageDY, messageRect.GetW(), messageRect.GetH(), sALIGN_RIGHT_TOP, new SColor8(0,0,0, 150))
+					messageDY :+ GetBitmapFontManager().baseFont.DrawBox(actionLog[i], messageRect.GetX(), messageRect.GetY() + messageDY, messageRect.GetW(), messageRect.GetH(), sALIGN_LEFT_TOP, SColor8.Black).y
+					'avoid drawing too much
+					if messageDY + 20 > messageRect.GetH() Then Exit
+				Next
+			EndIf
+			
+			Local barX:Int = Int(messageRect.GetX())
+			Local barY:Int = Int(messageRect.GetY() + messageRect.GetH() + 20)
+			Local oldColor:SColor8; GetColor(oldColor)
+			Local outlineColor:SColor8 = New SColor8(120, 120, 150, Byte(0.5*255))
+			Local bgFillColor:SColor8 = New SColor8(120, 130, 180, Byte(0.2*255))
+			Local fillColor:SColor8 = New SColor8(120, 130, 180, Byte(0.9*255))
+			Local percentageTextColor:SColor8 = New SColor8(0, 0, 0, Byte(0.5*255))
+			
+			'total progress
+			TFunctions.DrawOutlineRect(barX, barY, Int(messageRect.GetW()), 14, outlineColor, bgFillColor)
+			SetColor(fillColor)
+			DrawRect(barX + 1, barY + 1, Int((messageRect.GetW() - 2) * prepareProgress/100.0), 14 - 2)
+			SetColor(oldColor)
+			GetBitmapFontManager().baseFont.DrawBox(Int(self.prepareProgress) + " %", barX, barY - 3, messageRect.GetW(), 20, sALIGN_CENTER_CENTER, percentageTextColor)
 		EndIf
 		SetAlpha oldAlpha
 		
@@ -4345,8 +4899,13 @@ Type GameEvents
 	Function RestoreSpeedOnReachTarget:Int(triggerEvent:TEventBase)
 		Local fig:TFigureBase = TFigureBase(triggerEvent.GetSender())
 		If fig = GetPlayer().GetFigure()
-			App.DEV_FastForward_TargetReached = True
-			App.__SwitchFastForward(False)
+			'if next target is a dev-shortcut one, keep on fastforwarding
+			'next = index 0 (because it is new current)
+			Local nextTarget:TFigureTargetBase = fig.GetTarget(0)
+			If Not nextTarget or Not nextTarget.HasFlag(TVTFigureTargetFlag.CREATED_BY_DEVSHORTCUT)
+				App.DEV_FastForward_TargetReached = True
+				App.__SwitchFastForward(False)
+			EndIf
 		EndIf
 	End Function
 
@@ -4517,9 +5076,9 @@ Type GameEvents
 
 				Local changed:String = ""
 				If paramS <> ""
-					player.GetFinance().CheatMoney(Int(paramS))
+					player.GetFinance().CheatMoney(Long(paramS))
 
-					If Int(paramS) > 0 Then paramS = "+"+Int(paramS)
+					If Long(paramS) > 0 Then paramS = "+"+Long(paramS)
 					changed = " ("+paramS+")"
 				EndIf
 				GetGame().SendSystemMessage("[DEV] Money of player "+playerS+": "+player.GetFinance().money+"." + changed)
@@ -4645,7 +5204,7 @@ Type GameEvents
 					ElseIf oldLicence And Not block.licence
 						GetGame().SendSystemMessage("[DEV] #"+Int(indexS)+". Ended auction for '" + oldLicence.GetTitle()+"', Created no new auction")
 					ElseIf oldLicence = block.licence
-						GetGame().SendSystemMessage("[DEV] #"+Int(indexS)+". Reduced auction raw price for '" + oldLicence.GetTitle()+"' from " + MathHelper.DottedValue(oldPrice) + " to " + MathHelper.DottedValue(block.GetNextBidRaw()))
+						GetGame().SendSystemMessage("[DEV] #"+Int(indexS)+". Reduced auction raw price for '" + oldLicence.GetTitle()+"' from " + TFunctions.LocalizedDottedValue(oldPrice) + " to " + TFunctions.LocalizedDottedValue(block.GetNextBidRaw()))
 					EndIf
 				Next
 
@@ -6789,7 +7348,7 @@ Function EndHook()
 	Next
 	
 	TProfiler.DumpLog("logfiles/"+PROFILER_LOG_NAME)
-	TLogFile.DumpLogs()
+	TLogger.DumpLogs()
 
 ?bmxng
 '	Local buf:Byte[4096*3]
@@ -7138,7 +7697,7 @@ endrem
 
 ?linux
 Function CreateDesktopFile()
-	Local cwd:String = CurrentDir()
+	Local cwd:String = AppDir 'CurrentDir()
 	local file:TStream = WriteStream("TVTower.desktop")
 	if file
 		file.WriteLine("[Desktop Entry]")

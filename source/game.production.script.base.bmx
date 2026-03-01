@@ -134,7 +134,7 @@ Type TScriptBase Extends TNamedGameObject
 	End Method
 
 
-	Method HasBroadcastTimeSlot:Int()
+	Method HasBroadcastTimeSlot:Int() {_exposeToLua}
 		Return broadcastTimeSlotStart <> -1 And broadcastTimeSlotEnd <> -1
 	End Method
 
@@ -209,7 +209,7 @@ Type TScriptBase Extends TNamedGameObject
 		return HasFlag(TVTProgrammeDataFlag.LIVE)
 	End Method
 
-	Method IsAlwaysLive:int()
+	Method IsAlwaysLive:int() {_exposeToLua}
 		return HasProductionBroadcastFlag(TVTBroadcastMaterialSourceFlag.ALWAYS_LIVE)
 	End Method
 
@@ -337,12 +337,31 @@ Type TScriptBase Extends TNamedGameObject
 
 	Method GetLiveTimeText:String(nowTime:Long = -1)
 		If IsLive()
-			If Not IsSeries() And Not IsAlwaysLive()
+			If Not IsAlwaysLive()
 				if nowTime = -1 then nowTime = GetWorldTime().GetTimeGone()
-				Local liveTime:Long = GetLiveTime()
+				Local liveTime:Long = -1
+				If IsSeries()
+					Local epTime:Long
+					Local subScript:TScriptBase
+					For local idx:Int = 0 Until GetSubScriptCount()
+						subScript = GetSubScriptAtIndex(idx)
+						If subScript And subScript.IsLive() And Not subScript.IsAlwaysLive() And Not subScript.IsProduced()
+							epTime = GetSubScriptAtIndex(idx).GetLiveTime()
+							If (liveTime = -1 Or epTime < liveTime) And epTime > nowTime Then liveTime = epTime
+						EndIf
+					Next
+				Else
+					liveTime = GetLiveTime()
+				EndIf 
 				Local liveDay:Int = GetWorldTime().GetDay(liveTime)
 				Local nowDay:Int = GetWorldTime().GetDay(nowTime)
-				If liveDay = nowDay
+				'live time in the past...
+'				If liveTime < nowTime
+'					Return ""
+'				Else
+				If liveTime = -1
+					'no time indicator
+				ElseIf liveDay = nowDay
 					Return GetLocale("PLANNED_LIVE_TIME_TODAY_FROM_X_OCLOCK").Replace("%X%", GetWorldTime().GetDayHour( liveTime ))
 				ElseIf liveDay = nowDay + 1
 					Return GetLocale("PLANNED_LIVE_TIME_TOMORROW_FROM_X_OCLOCK").Replace("%X%", GetWorldTime().GetDayHour( liveTime ))

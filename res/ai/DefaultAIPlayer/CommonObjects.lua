@@ -5,7 +5,7 @@
 function CheckMovieBuyConditions(licence, maxPrice, maxPricePerBlock, minQuality)
 	local price = licence.GetPrice(TVT.ME)
 	if maxPrice ~= nil and (price > maxPrice) then return false; end
-	if maxPricePerBlock~=nil and maxPricePerBlock > 0 and price / licence.GetBlocks(2) > maxPricePerBlock then return false; end
+	if maxPricePerBlock~=nil and maxPricePerBlock > 0 and price / licence.GetBlocksTotal(2) > maxPricePerBlock then return false; end
 	if (minQuality ~= nil) and (licence.GetQuality() < minQuality) then return false; end
 	return true
 end
@@ -495,6 +495,10 @@ function AIToolsClass:GetBroadcastAttraction(broadcastMaterialSource, day, hour,
 	-- how much likes the player to send this kind of programme/infomercial
 	local playerMod = 1.0
 
+	-- "GetQuality()" already contains topicality-influence for infomercials and programmes
+	local quality = broadcastMaterialSource.GetQuality()
+	local isLive = false
+	local isCustomProd = false
 
 	-- infomercials?
 	if broadcastMaterialSource.IsAdContract() == 1 then
@@ -523,24 +527,33 @@ function AIToolsClass:GetBroadcastAttraction(broadcastMaterialSource, day, hour,
 		playerMod = forPlayer.Strategy.GetInfomercialWeight()
 
 	-- paid programming?
-	elseif broadcastMaterialSource.IsProgrammeLicence() == 1 and broadcastMaterialSource.HasDataFlag(TVT.Constants.ProgrammeDataFlag.PAID) == 1 then
-		audienceMod = 0.75
-		--infomercials are more appreciated during night and morning
-		--and less during afternoon/primetime
-		if hour ~= nil then
-			if hour >= 0 and hour <=14 then timeMod = 1.10 end
-			if hour >=20 and hour <=22 then timeMod = 0.90 end
+	elseif broadcastMaterialSource.IsProgrammeLicence() == 1 then
+		if broadcastMaterialSource.HasDataFlag(TVT.Constants.ProgrammeDataFlag.PAID) == 1 then
+			audienceMod = 0.75
+			--infomercials are more appreciated during night and morning
+			--and less during afternoon/primetime
+			if hour ~= nil then
+				if hour >= 0 and hour <=14 then timeMod = 1.10 end
+				if hour >=20 and hour <=22 then timeMod = 0.90 end
+			end
+		else
+			--for custom live productions quality data is not yet available...
+			if broadcastMaterialSource:IsLive() > 0 then
+				quality = math.max(quality, 0.4)
+				isLive = true
+			end
+			if broadcastMaterialSource.data:IsAPlayersCustomProduction() > 0 then
+				isCustomProd = true
+			end
 		end
 	end
 
-	-- "GetQuality()" already contains topicality-influence for infomercials
-	-- and programmes
-	-- return playerMod * timeMod * audienceMod * (broadcastMaterialSource.GetQuality() * broadcastMaterialSource.GetProgrammeTopicality())
-	local result = playerMod * timeMod * audienceMod * broadcastMaterialSource.GetQuality()
+	local result = playerMod * timeMod * audienceMod * quality
 
 	--TODO Anzahl Lizenzen, Durchschnittsqualität, Genre (Sendezeit) berücksichtigen
 
 	if broadcastMaterialSource.IsProgrammeLicence() == 1 then
+		local top = broadcastMaterialSource:GetTopicality()
 		local relTop = broadcastMaterialSource:GetRelativeTopicality()
 		if relTop == 1 then
 			result = result * 1.5
@@ -550,6 +563,7 @@ function AIToolsClass:GetBroadcastAttraction(broadcastMaterialSource, day, hour,
 				result = result * relTop
 			end
 		end
+		if forPlayer.blocksCount > 144 and relTop < 0.99 then result=result * 0.5 end
 		local timesShown = broadcastMaterialSource:GetTimesBroadcasted(forPlayer)
 		if timesShown >= 7 then
 			result=result * 0.3
@@ -559,16 +573,30 @@ function AIToolsClass:GetBroadcastAttraction(broadcastMaterialSource, day, hour,
 			result=result * 0.8
 		elseif timesShown == 0 then
 			result=result * 1.3
-			if hour < 19 or hour > 22 then
+			if isLive then result = result * 1.5 end
+			if isCustomProd then result = result * 1.5 end
+			local minHour = 19
+			if top > 0.99 then result = result * 1.5 end
+
+			--in growth phase send good programmes earlier, later they may be too expensive
+			--to waste before prime time
+			if forPlayer.coverage > 0.4 and forPlayer.coverage < 0.9 then minHour = 17 end
+			if (hour < minHour or hour > 22) and not isLive then
 				--TODO make genre dependent; many blocks - new cheap stuff also earlier 
-				if broadcastMaterialSource:GetTopicality() > 0.6 then
+				if top > 0.8 then
 					result= result * 0.3
 				end
-			end 
+			end
 		end
-		if hour > 18 and broadcastMaterialSource:GetGenre() == TVT.Constants.ProgrammeGenre.Animation then
-			result = result * 0.5
+--		if top > 0.95 then result = result * 1.3 end
+--		if top > 0.99 then result = result * 1.5 end
+		if hour == 19 or hour == 0 then
+			local blocks = broadcastMaterialSource:GetBlocks(2)
+			if blocks == 1 then result = result * 1.75 end
 		end
+--		if hour > 18 and broadcastMaterialSource:GetGenre() == TVT.Constants.ProgrammeGenre.Animation then
+--			result = result * 0.5
+--		end
 		if TVT.Constants.AwardType.CULTURE == forPlayer.currentAwardType then
 			if broadcastMaterialSource.data:IsCulture() > 0 then
 				result = result * 3

@@ -976,7 +976,7 @@ Type TProgrammeData Extends TBroadcastMaterialSource {_exposeToLua}
 
 		Local context:SScriptExpressionContext = new SScriptExpressionContext(self, localeID, Null)
 		sb = GameScriptExpression.ParseLocalizedText(sb, context)
-		If text <> sb.Hash() 'only create new string if required
+		If text.HashCode() <> sb.HashCode() 'only create new string if required
 			text = sb.ToString()
 			Return True
 		EndIf
@@ -1474,7 +1474,7 @@ Type TProgrammeData Extends TBroadcastMaterialSource {_exposeToLua}
 			Local influencePercentage:Float = 0.01 * MathHelper.Clamp(weightAge * ageInfluence + notLiveInfluence + firstBroadcastInfluence + weightTimesBroadcasted * timesBroadcastedInfluence, 0, 100)
 
 			maxTopicalityCache = 1.0 - THelper.ATanFunction(influencePercentage, 2)
-			'print GetTitle() +" age "+ age +" #br "+ timesBroadcastedValue +" ageInfl " +MathHelper.NumberToString(weightAge * ageInfluence) +" firstBrInfl "+ MathHelper.NumberToString(firstBroadcastInfluence) +" brInfl "+ MathHelper.NumberToString(weightTimesBroadcasted * timesBroadcastedInfluence) +" -> "+ MathHelper.NumberToString(maxTopicalityCache)
+			'print GetTitle() +" age "+ age +" #br "+ timesBroadcastedValue +" ageInfl " +TFunctions.LocalizedNumberToString(weightAge * ageInfluence) +" firstBrInfl "+ TFunctions.LocalizedNumberToString(firstBroadcastInfluence) +" brInfl "+ TFunctions.LocalizedNumberToString(weightTimesBroadcasted * timesBroadcastedInfluence) +" -> "+ TFunctions.LocalizedNumberToString(maxTopicalityCache)
 			maxTopicalityCacheCode = newCacheCode
 		EndIf
 		Return maxTopicalityCache
@@ -1547,20 +1547,22 @@ Type TProgrammeData Extends TBroadcastMaterialSource {_exposeToLua}
 	Method GetQuality:Float() {_exposeToLua}
 		Local quality:Float = 1.0
 
-		'the older the less ppl want to watch - 1 year = 0.985%, 2 years = 0.97%...
-		Local age:Float = 0.015 * Max(0, 100 - Max(0, GetWorldTime().GetYear() - GetYear()) )
-		quality :* Max(0.20, age)
-
+		'quality bonus for recent release: 1.5 for age 0 years, 1.45 for 1 year,...
+		'due to max(0, max) the age factor will always be >= 1
+		Local age:Float = 1 + 0.05 * Max(0, 10 - Max(0, (GetWorldTime().GetTimeGone() - GetReleaseTime())/GetWorldTime().GetYearLength() ))
+		quality :* age
 
 		'the more the programme got repeated, the lower the quality in
-		'that moment (^2 increases loss per air)
+		'that moment (^2 increases loss per air as well as age)
 		'but a "good movie" should benefit from being good - so the
 		'influence of repetitions gets lower by higher raw quality
 		'-> a movie with 100% base quality will have at least 10% of
 		'   quality no matter how many times it got aired
 		quality :* GetQualityRaw() * (0.10 + 0.90 * GetTopicality()^2)
 
-		Return MathHelper.Clamp(quality, 0.01, 1.0)
+		'allow up to 15% bonus for really new AND really good
+		'(most movies do not reach 100% even with a factor of 1.5 for age 0)
+		Return MathHelper.Clamp(quality, 0.01, 1.15)
 	End Method
 
 
@@ -1658,11 +1660,11 @@ Type TProgrammeData Extends TBroadcastMaterialSource {_exposeToLua}
 
 			topicality = MathHelper.Clamp(topicality + weightedRefresh, 0, maxTopicalityCache)
 			rem
-			print MathHelper.NumberToString(topOld,3)+ " -> "..
-				+ MathHelper.NumberToString(topicality,3) + "   ("..
-				+ MathHelper.NumberToString(maxTopicalityCache,3)+" "..
-				+ MathHelper.NumberToString(refreshModifier,3)+ " "..
-				+ MathHelper.NumberToString(weightedRefresh,3)+" "..
+			print TFunctions.LocalizedNumberToString(topOld,3)+ " -> "..
+				+ TFunctions.LocalizedNumberToString(topicality,3) + "   ("..
+				+ TFunctions.LocalizedNumberToString(maxTopicalityCache,3)+" "..
+				+ TFunctions.LocalizedNumberToString(refreshModifier,3)+ " "..
+				+ TFunctions.LocalizedNumberToString(weightedRefresh,3)+" "..
 				+ (Int((maxTopicalityCache-topicality) / weightedRefresh) +1)..
 				+ ") "+GetTitle()
 			endrem

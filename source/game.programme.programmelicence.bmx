@@ -456,10 +456,32 @@ Type TProgrammeLicenceCollection
 	'Cache generators
 	Method _GetLicencesGUID:TMap()
 		if not _licencesGUID
-			_licencesGUID = new TMap
-			for local licence:TProgrammeLicence = EachIn licences.Values()
-				_licencesGUID.Insert(licence.GetGUID(), licence)
-			next
+			'workaround: on loading a game, sometimes an AI-Thread tried to calculate the audience attraction
+			'TProgrammeLicence#GetTargetGroupAttractivitiyMod potentially accesses
+			'the parent licence via GUID, causing a segmentation fault if the cache
+			'was not properly initialized
+			'TODO overhaul: suggestion - initialize Underscore-Caches on loading the game
+			'so the AI-Threads will not be the first to try to access them
+			If CurrentThread() <> MainThread()
+				Local logged:Int = False
+				Repeat
+					Delay(1)
+					If _licencesGUID
+						Delay(5)
+						Exit
+					EndIf
+					If Not logged
+						TLogger.Log("TProgrammeLicenceCollection._GetLicencesGUID", "waiting for main thread to create cache", LOG_WARNING)
+						logged = True
+					EndIf
+				Forever
+			Else
+				Local tmp:TMap = new TMap
+				for local licence:TProgrammeLicence = EachIn licences.Values()
+					tmp.Insert(licence.GetGUID(), licence)
+				next
+				_licencesGUID = tmp
+			EndIf
 		endif
 		return _licencesGUID
 	End Method
@@ -2522,7 +2544,9 @@ Type TProgrammeLicence Extends TBroadcastMaterialSource {_exposeToLua="selected"
 			endif
 			'programme start time
 			time :+ ", "+ GetWorldTime().GetDayHour( nextReleaseTime )+":00"
-			if self.isAlwaysLive()
+			if self.GetSublicenceCount() > 0 And nextReleaseTime >= GetWorldTime().GetTimeGone()
+				time = ": "+time
+			else if self.isAlwaysLive()
 				time=""
 			else
 				time = ": "+time
@@ -2607,7 +2631,7 @@ Type TProgrammeLicence Extends TBroadcastMaterialSource {_exposeToLua="selected"
 			Local show:String = "-"
 			If useOwner
 				Local perc:Float = GetBroadcastStatistic(useOwner).bestAudiencePercantage[useOwner-1]
-				If perc > 0 then show = MathHelper.NumberToString(perc*100.0)+"%"
+				If perc > 0 then show = TFunctions.LocalizedNumberToString(perc*100.0)+"%"
 			EndIf
 			skin.RenderBox(contentX + 5 + 107, contentY, 88, -1, show, "maxAudience", EDatasheetColorStyle.Neutral, skin.fontBold)
 		Else
@@ -2631,9 +2655,9 @@ Type TProgrammeLicence Extends TBroadcastMaterialSource {_exposeToLua="selected"
 		if showPrice
 			if shiftDown then price:/ GetBlocksTotal()
 			if canAfford
-				skin.RenderBox(contentX + 5 + 199, contentY, contentW - 10 - 199 +1, -1, MathHelper.DottedValue( price ), "money", EDatasheetColorStyle.Neutral, skin.fontBold, ALIGN_RIGHT_CENTER)
+				skin.RenderBox(contentX + 5 + 199, contentY, contentW - 10 - 199 +1, -1, TFunctions.LocalizedDottedValue( price ), "money", EDatasheetColorStyle.Neutral, skin.fontBold, ALIGN_RIGHT_CENTER)
 			else
-				skin.RenderBox(contentX + 5 + 199, contentY, contentW - 10 - 199 +1, -1, MathHelper.DottedValue( price ), "money", EDatasheetColorStyle.Neutral, skin.fontBold, ALIGN_RIGHT_CENTER, EDatasheetColorStyle.Bad)
+				skin.RenderBox(contentX + 5 + 199, contentY, contentW - 10 - 199 +1, -1, TFunctions.LocalizedDottedValue( price ), "money", EDatasheetColorStyle.Neutral, skin.fontBold, ALIGN_RIGHT_CENTER, EDatasheetColorStyle.Bad)
 			endif
 		else
 			skin.RenderBox(contentX + 5 + 199, contentY, contentW - 10 - 199 +1, -1, "- ?? -", "money", EDatasheetColorStyle.Neutral, skin.fontBold, ALIGN_RIGHT_CENTER)
@@ -2663,19 +2687,19 @@ Type TProgrammeLicence Extends TBroadcastMaterialSource {_exposeToLua="selected"
 			contentY :+ lineHeight
 			skin.fontNormal.DrawSimple("Last Planned Hour: "+latestPlannedEndHour +" (Trailer: " + latestPlannedTrailerHour + ")", contentX + 5, contentY)
 			contentY :+ lineHeight
-			skin.fontNormal.DrawSimple("Speed: "+MathHelper.NumberToString(data.GetSpeed(), 4), contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Speed: "+TFunctions.LocalizedNumberToString(data.GetSpeed(), 4), contentX + 5, contentY)
 			contentY :+ lineHeight
-			skin.fontNormal.DrawSimple("Review: "+MathHelper.NumberToString(data.GetReview(), 4), contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Review: "+TFunctions.LocalizedNumberToString(data.GetReview(), 4), contentX + 5, contentY)
 			contentY :+ lineHeight
-			skin.fontNormal.DrawSimple("Outcome: "+MathHelper.NumberToString(data.GetOutcome(), 4) + " (TV: " + MathHelper.NumberToString(data.GetOutcomeTV(), 4) + ")", contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Outcome: "+TFunctions.LocalizedNumberToString(data.GetOutcome(), 4) + " (TV: " + TFunctions.LocalizedNumberToString(data.GetOutcomeTV(), 4) + ")", contentX + 5, contentY)
 			contentY :+ lineHeight
-			skin.fontNormal.DrawSimple("PriceMod: Licence="+MathHelper.NumberToString(GetModifier(modKeyPriceLS), 4)+"  Data="+MathHelper.NumberToString(data.GetModifier(modKeyPriceLS), 4), contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("PriceMod: Licence="+TFunctions.LocalizedNumberToString(GetModifier(modKeyPriceLS), 4)+"  Data="+TFunctions.LocalizedNumberToString(data.GetModifier(modKeyPriceLS), 4), contentX + 5, contentY)
 			contentY :+ lineHeight
-			skin.fontNormal.DrawSimple("Quality Raw: "+MathHelper.NumberToString(GetQualityRaw(), 4)+"  (w/o Age, Repetitions)", contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Quality Raw: "+TFunctions.LocalizedNumberToString(GetQualityRaw(), 4)+"  (w/o Age, Repetitions)", contentX + 5, contentY)
 			contentY :+ lineHeight
-			skin.fontNormal.DrawSimple("Quality: "+MathHelper.NumberToString(GetQuality(), 4), contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Quality: "+TFunctions.LocalizedNumberToString(GetQuality(), 4), contentX + 5, contentY)
 			contentY :+ lineHeight
-			skin.fontNormal.DrawSimple("Topicality: "+MathHelper.NumberToString(GetTopicality(), 4)+" / " + MathHelper.NumberToString(data.GetMaxTopicality(), 4), contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Topicality: "+TFunctions.LocalizedNumberToString(GetTopicality(), 4)+" / " + TFunctions.LocalizedNumberToString(data.GetMaxTopicality(), 4), contentX + 5, contentY)
 			contentY :+ lineHeight
 			skin.fontNormal.DrawSimple("Blocks: "+GetBlocks(), contentX + 5, contentY)
 			contentY :+ lineHeight
@@ -2687,7 +2711,7 @@ Type TProgrammeLicence Extends TBroadcastMaterialSource {_exposeToLua="selected"
 			contentY :+ lineHeight
 			skin.fontNormal.DrawSimple("Audience Record: "+Long(GetBroadcastStatistic().GetBestAudienceResult(useOwner, -1).audience.GetTotalSum())+" (player), "+Long(GetBroadcastStatistic().GetBestAudienceResult(-1, -1).audience.GetTotalSum())+" (all)", contentX + 5, contentY)
 			contentY :+ lineHeight
-			skin.fontNormal.DrawSimple("Price: "+MathHelper.DottedValue(GetPriceForPlayer(useOwner))+" (licLvl: " + licencedAudienceReachLevel+")  Sell: " + MathHelper.DottedValue(GetSellPrice(useOwner)), contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Price: "+TFunctions.LocalizedDottedValue(GetPriceForPlayer(useOwner))+" (licLvl: " + licencedAudienceReachLevel+")  Sell: " + TFunctions.LocalizedDottedValue(GetSellPrice(useOwner)), contentX + 5, contentY)
 			contentY :+ lineHeight
 			skin.fontNormal.DrawSimple("Trailer: " + data.GetTimesTrailerAiredSinceLastBroadcast(useOwner) +" (total: "+ data.GetTimesTrailerAired()+")", contentX + 5, contentY)
 			if data.GetTrailerMod(useOwner, False)
@@ -2850,7 +2874,7 @@ Type TProgrammeLicence Extends TBroadcastMaterialSource {_exposeToLua="selected"
 
 			skin.fontBold.DrawSimple("Trailer: "+GetTitle(), contentX + 5, contentY)
 			contentY :+ 14
-			skin.fontNormal.DrawSimple("Traileraktualitaet: "+MathHelper.NumberToString(data.GetTrailerTopicality(), 4)+" von " + MathHelper.NumberToString(data.GetMaxTrailerTopicality(), 4), contentX + 5, contentY)
+			skin.fontNormal.DrawSimple("Traileraktualitaet: "+TFunctions.LocalizedNumberToString(data.GetTrailerTopicality(), 4)+" von " + TFunctions.LocalizedNumberToString(data.GetMaxTrailerTopicality(), 4), contentX + 5, contentY)
 			contentY :+ 12
 			skin.fontNormal.DrawSimple("Ausstrahlungen: "+data.trailerAired, contentX + 5, contentY)
 			contentY :+ 12
